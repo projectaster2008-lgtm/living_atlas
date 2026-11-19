@@ -1,0 +1,6 @@
+{
+  "name": "Living Atlas",
+  "description": "A local-first 3D open-world life simulation and exploration sandbox featuring four interconnected regions, autonomous deterministic NPCs, dynamic weather, vehicles, and persistent progression.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

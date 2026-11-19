@@ -1,0 +1,652 @@
+> **Document type:** Product, gameplay, visual direction, and technical architecture specification
+**Version:** 1.0
+**Date:** 2026-11-17
+**Status:** Draft for owner review. This document is not authorization to create files, install packages, modify an existing repository, or deploy.
+> 
+
+# 1. Product identity
+
+**Working title:** Living Atlas
+**Product category:** Single-player, browser-based 3D open-world life and exploration sandbox
+**Primary experience:** Hybrid player + observer simulation
+**Visual direction:** Cinematic photorealism with a distinct original art direction
+**Technical direction:** Local-first, offline-capable, deterministic game simulation
+**Release philosophy:** A complete, playable, end-to-end first release, expanded through modular content rather than a disconnected visual demo.
+
+## Product statement
+
+Living Atlas is an interconnected collection of explorable worlds where the player can freely roam, drive, enter selected buildings, meet residents, take part in activities, follow missions, and observe a simulated society. The world changes over time through schedules, weather, traffic, events, and character relationships.
+
+The high-level inspiration is the freedom and systemic density of an open-world city game such as GTA: third-person movement, a traversable environment, vehicles, a living population, discoverable activities, missions, and the ability to move between places without following a fixed linear story. Living Atlas must have its own world identity, characters, environments, interface, story, mechanics, and assets. It must not copy GTA maps, characters, missions, branding, UI, or proprietary assets.
+
+The desired emotional direction is different: discovery, atmosphere, believable everyday life, social interaction, cinematic environments, and multiple distinct worlds.
+
+# 2. Non-negotiable owner constraints
+
+1. **No API keys.** No Gemini, OpenAI, Claude, or other hosted model API. No secrets or credentials are required for the core application.
+2. **Hardcoded game AI.** NPC intelligence is implemented through authored rules, finite-state machines, behavior trees, utility scoring, schedules, and deterministic event logic. “AI characters” means game AI, not generative AI.
+3. **No cloud AI dependency.** Dialogue, reactions, activities, missions, and character behavior must work without a network connection.
+4. **No mandatory backend.** The first release is a client-side application. No Supabase, Firebase, server, account system, remote database, or cloud service is required.
+5. **Local persistence.** Save data is stored locally in the browser using IndexedDB, with export/import backup support.
+6. **End-to-end delivery.** The release must have a complete boot-to-play-to-save-to-resume experience. A 3D scene with placeholder controls is not a completed release.
+7. **Separate project identity.** Living Atlas is a new standalone project. It is not the existing Ating Universe Simulation repository and must not inherit that project's Gemini runtime, Supabase assumptions, relationship-specific memories, characters, or data.
+8. **Performance-aware production.** The initial target hardware includes a Windows laptop with 8 GB RAM. The application must scale quality and simulation density rather than assuming a gaming PC.
+
+# 3. Target player experience
+
+The player controls one customizable or selectable avatar in third-person view. They can walk, run, explore, enter supported interiors, interact with people and objects, drive vehicles, discover locations, and participate in activities or missions.
+
+The world also supports observer behavior: the player can pause or slow the simulation where appropriate, switch to a free camera/photo mode, follow selected characters, and watch autonomous routines and public events.
+
+The experience has five pillars:
+
+- **Freedom:** choose where to go and what to do within the currently available world.
+- **A living population:** residents have routines, needs, goals, social connections, and reactions.
+- **Place and atmosphere:** weather, lighting, sound, interiors, architecture, and time of day establish each world's identity.
+- **Discovery and activity:** missions, errands, social encounters, exploration rewards, and dynamic events give places purpose.
+- **Continuity:** player progress, world time, event outcomes, and selected character relationships persist between sessions.
+
+## Core gameplay loop
+
+1. Boot the application and load the local save.
+2. Enter the last saved location or the world gateway.
+3. Explore on foot or use available transportation.
+4. Discover a resident, location, activity, mission, or event.
+5. Interact, complete objectives, or simply observe.
+6. Receive progress, reputation, relationship, collection, or unlock changes.
+7. Save automatically at safe checkpoints and on exit; allow manual save.
+8. Resume later with the relevant persistent state restored.
+
+## Player modes
+
+- **Explore:** normal third-person movement and interaction.
+- **Drive:** enter and operate supported vehicles.
+- **Interact:** contextual actions for people, objects, doors, shops, and activity points.
+- **Observer / Photo:** free camera, follow camera, framing controls, and optional simulation pause.
+- **Map / Journal:** discover districts, objectives, residents, activities, and completed events.
+
+# 4. World and geography design
+
+The universe is organized as a World Gateway connected to four compact, distinct regions. These are production targets for the first complete release, not four enormous seamless continents. Each region is a bounded explorable district with a recognizable landmark, a road/walking network, selected interiors, residents, and activities.
+
+## World Gateway
+
+A central transit and orientation hub. It introduces the universe, explains available destinations, and provides diegetic travel between regions. Transport transitions are used as both an experience and a technical boundary for unloading one region and loading another.
+
+## Region 01 — Solara Bay
+
+**Identity:** coastal town and social starting region.
+**Landmarks:** central plaza, café street, marina, waterfront promenade, beach access, residential blocks.
+**Activities:** café visits, errands, conversations, sightseeing, waterfront events, driving routes.
+**Environmental signature:** warm coastal sunlight, sea haze, wind, clear skies, rain showers, golden-hour lighting.
+**Role:** first playable region and the reference environment for validating the entire engine.
+
+## Region 02 — Vesper City
+
+**Identity:** compact modern urban district.
+**Landmarks:** downtown blocks, shopping street, transit station, office cluster, rooftop viewpoints.
+**Activities:** city errands, delivery routes, public gatherings, traffic encounters, nightlife activities.
+**Environmental signature:** glass and concrete, street lighting, wet roads, denser pedestrian and vehicle movement.
+
+## Region 03 — Verdant Highlands
+
+**Identity:** mountain settlement and natural exploration region.
+**Landmarks:** village center, forest roads, cabins, lake, waterfall, scenic overlooks.
+**Activities:** hiking, exploration, local errands, outdoor gatherings, scenic drives.
+**Environmental signature:** fog, rain, forest ambience, flowing water, wind, cooler light.
+
+## Region 04 — Aether District
+
+**Identity:** near-future research and innovation district.
+**Landmarks:** research campus, public plaza, elevated transit, glass architecture, technology exhibition spaces.
+**Activities:** discovery tasks, demonstrations, campus events, transport exploration, social encounters.
+**Environmental signature:** clean modern materials, controlled architectural lighting, luminous accents, advanced transit.
+
+## Region boundaries and connectivity
+
+- Each region is a separately loadable scene or scene bundle.
+- Travel is initiated through a gateway, transit station, ferry, or road transition.
+- The transition can use a short cinematic camera sequence and a loading state.
+- Only the active region and required adjacent/transition assets are resident in memory.
+- The simulation clock advances consistently across region changes.
+- Unloaded regions are advanced through lightweight summary simulation, not full rendering.
+- Region manifests define scene assets, spawn points, navigation data, interiors, residents, traffic routes, activities, audio, and environmental presets.
+
+## First-release content targets
+
+These are initial scope limits to protect delivery, not permanent caps:
+
+- Four compact regions, each with one coherent explorable district.
+- Two or three fully explorable interiors per region.
+- One main landmark and several smaller points of interest per region.
+- Approximately 20–30 authored resident profiles per region, with only a smaller nearby group fully simulated at once.
+- Approximately 6–10 fully active nearby NPCs as an initial performance target, adjustable after profiling.
+- A small curated vehicle roster, with at least one player-drivable land vehicle and route-driven traffic.
+- A complete set of repeatable activities and a small authored mission chain in the starting region; other regions receive a smaller set of region-specific activities and objectives.
+- A coherent set of original environment, character, vehicle, animation, audio, and UI assets.
+
+# 5. Visual direction and art bible
+
+## Visual target
+
+Cinematic photorealism is the target presentation, achieved through coherent PBR materials, high-quality lighting, believable proportions, detailed but optimized environments, animation quality, atmospheric effects, composition, and sound.
+
+The project must not equate photorealism with maximum polygon count or maximum texture resolution. Strong composition, material response, lighting, animation, and environmental storytelling take priority over brute-force asset density.
+
+## Art principles
+
+- Believable scale and human proportions.
+- Physically based materials for stone, concrete, glass, metal, wood, fabric, foliage, road surfaces, and water.
+- Consistent sun/sky lighting and controlled local lights.
+- Restrained post-processing; avoid excessive bloom, chromatic aberration, and permanent neon outlines.
+- Region-specific color grading and environmental ambience, while preserving a shared visual identity.
+- Strong environmental storytelling: signage, street furniture, storefronts, public spaces, room layouts, and objects should explain how places are used.
+- Character animation should convey intent through locomotion, posture, gaze, gestures, and interaction poses.
+- Camera language should feel cinematic without obstructing player control.
+
+## Camera language
+
+- Third-person follow camera as the default.
+- Optional closer shoulder camera for interaction and selected exploration moments.
+- Vehicle follow camera with collision-aware positioning.
+- Contextual cinematic shots for region arrival, mission milestones, and selected events.
+- Free observer/photo camera with adjustable framing and optional depth of field.
+- Camera transitions must be interruptible or skippable when they delay player control.
+
+## Asset pipeline
+
+- glTF 2.0 / GLB is the primary runtime model format.
+- Blender is the recommended authoring and optimization tool.
+- Use modular environment kits, shared materials, texture atlases where appropriate, mesh/texture compression, and reusable animation rigs.
+- Keep source assets, optimized runtime assets, licenses, and attribution records organized separately.
+- Prefer original or clearly licensed assets. Every third-party asset must have a recorded source, license, permitted usage, and modifications.
+- Avoid downloading or bundling assets with unclear redistribution rights.
+- Use procedural generation selectively for repeatable props, foliage placement, roads, and ambient variation; hand-author landmarks and hero locations.
+
+# 6. NPC and character game-AI specification
+
+NPCs use deterministic, locally executed game logic. There is no LLM, hosted inference, API call, or generative response requirement.
+
+## NPC data model
+
+Each resident profile may contain:
+
+- Stable character ID, display name, appearance/rig reference, home, workplace, and region.
+- Personality traits represented by bounded numeric or categorical values.
+- Occupation, weekly schedule, preferred activities, and known locations.
+- Needs such as energy, hunger, social contact, comfort, and task urgency.
+- Current goal, current behavior state, target location, and navigation status.
+- Relationship records with other residents and the player.
+- Conversation topics, authored dialogue pools, response conditions, cooldowns, and remembered interaction flags.
+- Current mood or emotional presentation.
+- Event participation and relevant history.
+
+## Behavior architecture
+
+Use a layered system:
+
+1. **Schedule planner:** determines broad activity blocks from time, day, occupation, and event calendar.
+2. **Needs evaluator:** adjusts priorities based on needs, time pressure, weather, and available resources.
+3. **Utility selector:** scores eligible actions and chooses the best available action with cooldowns and tie-breaking rules.
+4. **Behavior state machine:** executes actions such as idle, walk, commute, work, shop, eat, sit, talk, react, flee from hazards, or attend an event.
+5. **Navigation:** selects a valid destination and follows a navigation mesh or waypoint route.
+6. **Social system:** finds suitable nearby conversation partners, checks relationship and context, selects an authored interaction, and updates social state.
+7. **Animation controller:** maps behavior states to locomotion, idle, gesture, interaction, and transition animations.
+
+Behavior selection must be deterministic for the same saved state and simulation seed wherever practical. Any randomized variation uses an explicit seeded random source so behavior can be reproduced and debugged.
+
+## NPC simulation tiers
+
+- **Near tier:** full navigation, local collision, animation, interactions, and social behavior.
+- **District tier:** schedule and goal updates at a lower frequency; no continuous skeletal animation.
+- **Offscreen tier:** lightweight schedule, relationship, and event summary updates only.
+- **Inactive region tier:** advance aggregate state when the region is entered or saved, rather than simulating every resident continuously.
+
+NPCs should not all think, pathfind, or animate every rendered frame. Decision updates run on staggered intervals. Rendering interpolation is separate from decision logic.
+
+## Dialogue
+
+- Authored dialogue templates and response branches.
+- Context conditions include time, location, current activity, weather, relationship, mission state, recent interaction flags, and character personality.
+- Dialogue selection uses topic weights, cooldowns, repetition prevention, and fallback lines.
+- NPC-to-NPC ambient conversations use short authored exchanges and contextual barks.
+- Player conversations use explicit interaction choices, with each choice mapped to a local rule and world-state effect.
+- No open-ended generated dialogue is promised in this release.
+- Dialogue content is data-driven and can be expanded without changing the behavior engine.
+
+## Relationship model
+
+Relationships are local numeric/flag-based records such as familiarity, trust, friendship, respect, and recent interaction. Only relevant interactions change values. Relationship changes unlock or alter dialogue, invitations, activity access, and selected event outcomes. Avoid a single opaque “friendship score” as the only representation.
+
+# 7. Player, missions, activities, and progression
+
+## Player controller
+
+- Third-person movement with walk, jog/run, jump where suitable, and contextual interaction.
+- Camera-relative movement and responsive input.
+- Collision with world geometry and characters.
+- Contextual interaction prompts for usable objects, doors, residents, and vehicles.
+- Keyboard/mouse support and a touch-friendly control layout as a later acceptance target, not assumed to be complete without device testing.
+
+## Vehicles
+
+- Begin with accessible arcade-style handling rather than a complex racing simulator.
+- Vehicle enter/exit interactions, steering, acceleration, braking, reverse, camera follow, collision response, and basic damage/condition feedback.
+- Route-driven traffic vehicles use simplified movement and right-of-way rules.
+- Pedestrian crossing and traffic light logic should be consistent.
+- Vehicle roster, handling parameters, and routes are data-driven.
+- Advanced vehicle customization, complex damage simulation, and multiplayer traffic are out of first-release scope.
+
+## Missions and activities
+
+Use a reusable mission framework rather than hardcoding each mission as a separate one-off system.
+
+A mission definition includes: mission ID, title, description, start conditions, objectives, objective triggers, success/failure conditions, reward, cooldown/replay policy, and state transitions.
+
+First-release activity types may include:
+
+- Go to a location.
+- Speak to a resident.
+- Deliver or collect an item.
+- Follow a route.
+- Attend an event.
+- Drive to a destination.
+- Explore or photograph a landmark.
+- Complete a short multi-step errand.
+
+Missions should be original and suitable for the intended tone. Crime, combat, weapons, wanted levels, and law-enforcement gameplay are **not assumed** by the phrase “GTA-style” and are excluded from the baseline until explicitly selected.
+
+## Progression
+
+- Discoverable locations and map markers.
+- Activity completion and simple rewards.
+- Resident relationship milestones.
+- Region access and travel unlocks.
+- Journal of discovered residents, locations, missions, and events.
+- No monetization, loot boxes, or account progression systems in the first release.
+
+# 8. World simulation systems
+
+## Time
+
+- One global simulation clock with configurable time scale.
+- Time-of-day lighting presets and smooth transitions.
+- Resident schedules and activity windows.
+- Time persists across sessions.
+- Pause and speed controls may be available in observer mode, subject to mission rules.
+
+## Weather
+
+- Region-specific weather profiles.
+- Clear, overcast, rain, fog, and storm states as supported by each environment.
+- Weather transitions, wind, cloud cover, precipitation, audio, and wetness effects.
+- Gameplay reactions: residents seek shelter, selected activities change, traffic may slow, and outdoor events may be postponed.
+- Weather must not require expensive full-scene material updates every frame.
+
+## Traffic and pedestrians
+
+- Route graphs for vehicles.
+- Waypoints and navigation meshes for pedestrians.
+- Basic traffic lights, crossings, yielding, obstacle avoidance, and despawn/respawn boundaries.
+- Traffic density adapts to region, time, and performance tier.
+- Distant traffic uses simplified representations.
+
+## Dynamic events
+
+Event definitions include region, schedule or trigger, eligibility conditions, participants, duration, cooldown, effects, and completion state. Examples: market day, public performance, community gathering, road closure, weather interruption, or a spontaneous social meeting.
+
+Events must be authored and reproducible. “Dynamic” means the event system selects and coordinates valid authored events based on world conditions, not that an external AI invents content.
+
+## Interiors
+
+- Each supported building has an exterior entry point and an interior scene or interior zone.
+- Entering/leaving uses a controlled transition and saves the return transform.
+- Interiors contain collision, lighting, navigation, interaction points, resident/activity placement, and audio zones.
+- Unused interiors are unloaded.
+- Not every visible building needs a fully enterable interior. Clearly communicate which buildings are interactive.
+
+# 9. Technical architecture
+
+## Recommended stack
+
+| Concern | Proposed technology | Notes |
+| --- | --- | --- |
+| Application shell | React + TypeScript + Vite | Menus, HUD, settings, maps, journal |
+| 3D runtime | Three.js + React Three Fiber | Rendering and scene composition |
+| 3D helpers | Drei | Loaders, controls, LOD helpers, utilities |
+| Animation | Three.js AnimationMixer + GSAP | Character clips and cinematic/UI transitions |
+| Game simulation | Plain TypeScript modules | Independent of React render lifecycle |
+| Physics | Rapier only if required by tested mechanics | Keep first implementation simple |
+| Navigation | Authored navmeshes/waypoints + pathfinding | NPCs and vehicle routes |
+| Local state | Small domain stores; Zustand optional | UI state separate from simulation state |
+| Persistence | IndexedDB | Local saves, settings, world progress |
+| Assets | glTF 2.0 / GLB | Runtime 3D asset delivery |
+| Testing | Vitest + Playwright, plus browser profiling | Unit, integration, and end-to-end checks |
+
+Exact package versions must be checked against current package compatibility when implementation begins. This specification does not lock versions.
+
+## Architectural boundaries
+
+**Application layer**
+
+- Startup, menus, settings, input mapping, HUD, map, journal, save UI.
+
+**Rendering layer**
+
+- Renderer, camera, lighting, post-processing, scene composition, animation playback, quality scaling.
+
+**Simulation core**
+
+- Fixed-step simulation clock, deterministic random source, event bus, entity registry, system scheduler, world state.
+
+**World layer**
+
+- Region definitions, scene manifests, spawn points, navigation data, interiors, environment presets, audio zones, event definitions.
+
+**Character layer**
+
+- Resident profiles, schedules, needs, utility scoring, behavior state machines, dialogue, relationships, navigation intent.
+
+**Gameplay layer**
+
+- Player controller, interaction system, vehicle system, missions, activities, inventory/collectibles if included.
+
+**Persistence layer**
+
+- Versioned save schema, migrations, checkpoints, settings, import/export.
+
+The simulation core must not import React components. React components must not own authoritative NPC or world simulation state. The renderer consumes simulation snapshots and interpolates visual transforms.
+
+## Simulation update model
+
+- Use a fixed or bounded simulation timestep for authoritative game logic.
+- Use frame delta for visual interpolation and rendering.
+- Never update authoritative simulation through React state setters on every frame.
+- Run expensive systems on staggered schedules.
+- Consider Web Workers for pathfinding or batch updates only after profiling shows main-thread contention.
+- Keep simulation updates reproducible through explicit time, seed, and state inputs.
+
+## Scene and asset lifecycle
+
+- Load the minimum scene bundle required for the active region.
+- Stream or preload the next region during travel where memory allows.
+- Reuse geometry, materials, and textures.
+- Instance repeated props and vegetation.
+- Use LOD for distant geometry and characters.
+- Dispose GPU resources and listeners when scenes unload.
+- Keep loading, error, and fallback states explicit.
+- Validate asset dimensions, texture budgets, animation rigs, and license metadata before inclusion.
+
+## Save data
+
+Use a versioned IndexedDB schema. Save:
+
+- Player transform, region, health/condition if applicable, selected vehicle state where safe.
+- World clock, weather state, and deterministic simulation seed.
+- Mission and activity progress.
+- Discovered locations and collected items.
+- Character relationship values and important interaction flags.
+- Region event state and limited persistent NPC state.
+- Settings and accessibility preferences.
+
+Do not persist transient animation frames, every NPC coordinate, or every physics tick. Reconstruct nonessential positions from schedules and seeded simulation state. Provide manual save, autosave checkpoints, backup export, and import validation. Handle corrupt or incompatible saves with a recovery path.
+
+## Offline and network policy
+
+The core game must run with the network disconnected after its assets are available locally. No analytics, remote telemetry, user accounts, hosted AI, remote database, or runtime API calls are required. A future static hosting option may serve the built files, but it must not introduce a backend dependency. Local browser storage remains the source of truth for the single-player save.
+
+# 10. Performance and hardware policy
+
+Initial known development constraint: Windows laptop with 8 GB RAM. Exact GPU, browser, and thermal performance must be measured on the actual machine before finalizing visual budgets.
+
+## Performance principles
+
+- One active region at a time.
+- Small, authored districts rather than a seamless continent.
+- Adaptive render resolution and capped device pixel ratio.
+- Limited real-time shadow casters and local lights.
+- Baked or precomputed lighting where appropriate.
+- Instancing for repeated environment props.
+- LOD and distance-based culling for characters and environment.
+- Texture compression and controlled texture dimensions.
+- Limited number of fully animated and pathfinding NPCs.
+- Staggered simulation ticks.
+- Explicit GPU resource disposal.
+- Quality presets: Low, Balanced, High; auto mode may adapt based on measured frame time.
+
+## Provisional performance acceptance
+
+These are goals to test, not promises:
+
+- Stable interaction and movement without sustained severe stutter on the target laptop.
+- Low preset targets approximately 30 FPS in the representative starting district, subject to measurement.
+- Higher-end devices may reach 60 FPS with higher quality.
+- No uncontrolled memory growth after repeated region and interior transitions.
+- Scene transitions show progress and recover from missing or invalid assets.
+- Quality reduction responds to sustained frame-time pressure without rapid oscillation.
+
+# 11. Proposed codebase organization
+
+```
+living-atlas/
+  docs/
+    product/
+    architecture/
+    decisions/
+    testing/
+  public/
+    assets/
+      worlds/
+      characters/
+      vehicles/
+      animations/
+      audio/
+      ui/
+  src/
+    app/
+      boot/
+      menus/
+      hud/
+      map/
+      journal/
+      settings/
+    engine/
+      core/
+      rendering/
+      assets/
+      streaming/
+      physics/
+      navigation/
+      input/
+    simulation/
+      clock/
+      scheduler/
+      entities/
+      characters/
+      relationships/
+      dialogue/
+      weather/
+      traffic/
+      events/
+      missions/
+    gameplay/
+      player/
+      vehicles/
+      interactions/
+      activities/
+      progression/
+    worlds/
+      gateway/
+      solara-bay/
+      vesper-city/
+      verdant-highlands/
+      aether-district/
+    persistence/
+      database/
+      saves/
+      migrations/
+    shared/
+      types/
+      utilities/
+  tests/
+    unit/
+    integration/
+    e2e/
+```
+
+This is a proposed structure, not a created project.
+
+# 12. End-to-end release scope
+
+A release is complete only when all of the following work together:
+
+1. Application boots to a polished title/start screen.
+2. New game and continue game paths work.
+3. Player spawns at a valid location with functioning third-person controls.
+4. The starting region is fully traversable within its defined boundary.
+5. Collision, interaction, and contextual prompts work.
+6. Residents execute schedules and local rule-based behaviors.
+7. NPC conversations and relationship changes work through authored logic.
+8. Day/night and at least the region's selected weather states function.
+9. At least one vehicle can be entered, driven, exited, and saved safely.
+10. Supported interiors can be entered and exited without losing the player state.
+11. Mission/activity objectives, completion, rewards, and journal updates work.
+12. Region travel loads and unloads assets safely.
+13. Other regions have their defined first-release activities and residents.
+14. Save, autosave, resume, export, and import work.
+15. Settings and quality tiers work.
+16. No API key, cloud model, backend, account, or remote database is required.
+17. Automated tests cover simulation rules, mission transitions, save migrations, and core navigation/state behavior.
+18. Browser end-to-end tests cover boot, new game, movement, interaction, driving, mission completion, save, reload, and resume.
+19. A target-laptop profiling pass records frame time, memory behavior, and transition stability.
+20. Asset licenses and attribution are recorded.
+
+# 13. Delivery plan
+
+## Stage 0 — Specification approval and technical feasibility
+
+- Confirm product boundaries and first-release content.
+- Inspect the actual development machine and available GPU/browser capability.
+- Create a representative asset/performance budget.
+- Validate the chosen stack and package versions.
+- Produce the implementation plan and acceptance test matrix.
+
+**Exit condition:** approved specification, architecture decisions, and a testable production plan.
+
+## Stage 1 — Engine foundation
+
+- Application boot, input, renderer, camera, scene lifecycle.
+- Simulation clock, entity model, event bus, deterministic seed.
+- Save schema and basic settings.
+- One small graybox test district.
+
+**Exit condition:** stable playable graybox with save/resume and repeatable simulation tests.
+
+## Stage 2 — Solara Bay vertical slice
+
+- Finalized representative art direction.
+- Player controller, collisions, interactions.
+- A small resident population with schedules, navigation, dialogue, and social state.
+- One interior, one vehicle, one activity chain.
+- Day/night and a limited weather loop.
+
+**Exit condition:** one polished, complete district proving all major systems together.
+
+## Stage 3 — First-release world content
+
+- Complete Solara Bay.
+- Add Vesper City, Verdant Highlands, Aether District, and World Gateway.
+- Add region transitions, region-specific activity sets, and interiors.
+- Optimize assets and scene streaming.
+
+**Exit condition:** all planned regions are connected and playable.
+
+## Stage 4 — Integration, hardening, and release
+
+- Save migration and recovery.
+- Accessibility, input, settings, and UI polish.
+- Automated unit, integration, and end-to-end testing.
+- Target-laptop profiling and quality tuning.
+- License/attribution audit.
+- Production build and local release package.
+- Optional static hosting only after local release acceptance and explicit approval.
+
+**Exit condition:** all release acceptance criteria pass, with known limitations documented.
+
+# 14. Risks and mitigations
+
+| Risk | Mitigation |
+| --- | --- |
+| Photorealistic asset production exceeds time or hardware | Limit district size, use modular kits, optimize hero assets, profile early |
+| Scope expands into an unfinishable open world | Freeze first-release region boundaries and content budgets |
+| Too many NPCs overload CPU | Tiered simulation, staggered updates, active population limits |
+| Vehicle physics becomes a project of its own | Use arcade handling and route-driven traffic first |
+| Interiors multiply asset and streaming costs | Only selected interiors are fully explorable |
+| Local saves become incompatible | Versioned schema, migrations, export/import validation |
+| Third-party asset licenses are unclear | Asset provenance and license gate |
+| AI is mistaken for generative AI | Document explicitly: deterministic authored game logic only |
+| Browser/GPU differences cause failures | WebGL-compatible baseline, feature detection, adaptive quality |
+| A single large codebase becomes tightly coupled | Keep simulation, rendering, gameplay, content, and persistence behind explicit interfaces |
+
+# 15. Explicit exclusions from first release
+
+- Multiplayer, co-op, shared online worlds, and networking.
+- Hosted or local LLM dialogue.
+- Any API keys, cloud AI endpoints, or required online service.
+- Supabase, Firebase, authentication, or a custom backend.
+- A seamless planet-sized map or an unlimited number of worlds.
+- Full-scale commercial GTA-level content density.
+- Weapons, combat, crime, police pursuit, and wanted-level systems unless separately approved.
+- Advanced vehicle simulation, vehicle customization, and complex destruction.
+- Full interior access to every building.
+- Procedural generation of unlimited missions or dialogue.
+- VR support.
+- Mobile-native packaging; responsive browser controls can be considered after desktop stability.
+
+# 16. Key architectural decisions
+
+| ID | Decision | Status |
+| --- | --- | --- |
+| LA-ADR-001 | Standalone single-player project, separate from Ating Universe Simulation | Proposed |
+| LA-ADR-002 | No API keys, no generative AI, deterministic game AI only | Owner-mandated |
+| LA-ADR-003 | No mandatory backend or remote persistence | Owner-mandated |
+| LA-ADR-004 | React + TypeScript + Vite application shell | Proposed |
+| LA-ADR-005 | Three.js + React Three Fiber rendering | Proposed |
+| LA-ADR-006 | Plain TypeScript simulation core independent of React | Proposed |
+| LA-ADR-007 | IndexedDB local save with export/import | Proposed |
+| LA-ADR-008 | Four compact connected regions for first release | Proposed |
+| LA-ADR-009 | GTA-inspired open-world freedom, with original content and a non-crime baseline | Proposed |
+| LA-ADR-010 | Start with one end-to-end vertical slice before expanding content | Recommended |
+
+# 17. Evidence and technical references
+
+**Previously consulted technical references:**
+
+- React Three Fiber performance scaling: https://r3f.docs.pmnd.rs/advanced/scaling-performance
+- Three.js GLTFLoader: https://threejs.org/docs/pages/GLTFLoader.html
+- Three.js cleanup/resource disposal manual: https://threejs.org/manual/en/cleanup.html
+- Three.js responsive rendering guidance: https://threejs.org/manual/en/responsive.html
+- MDN WebGPU API and compatibility: https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API
+
+**Context7 references used in the preceding architecture research:**
+
+- Three.js: /mrdoob/three.js
+- React Three Fiber: /pmndrs/react-three-fiber/v9.8.2
+- GSAP: /websites/gsap
+
+**RAG Atlas evidence limitation:** The prior Atlas verification recorded 14/14 evaluation questions passing on 2026-11-16. A fresh task-specific Atlas query was attempted for this specification, but the local command could not resolve the requested working path. Therefore, the previous evaluation is historical evidence of Atlas health, not proof that this exact architecture query was retrieved successfully.
+
+**Workflow references:** Superpowers brainstorming and writing-plans were consulted in the planning session. The design gate remains in force: no project scaffold, dependency installation, implementation, or repository modification until the owner approves this specification.
+
+# 18. Approval checklist
+
+- [ ]  Approve the product identity and hybrid open-world experience.
+- [ ]  Approve the no-API-key, hardcoded game-AI constraint.
+- [ ]  Approve standalone/offline-first architecture and local save model.
+- [ ]  Approve the four-region first-release scope and compact district boundaries.
+- [ ]  Approve the non-crime baseline for missions and activities, or request a different gameplay direction.
+- [ ]  Approve the proposed technology stack, subject to version and hardware validation.
+- [ ]  Approve creation of the implementation plan.
+- [ ]  Separately authorize local project creation and implementation after the plan is reviewed.
+
+**Current status:** Draft specification prepared. No local project files have been created or changed. No packages have been installed. No repository has been modified.
