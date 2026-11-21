@@ -21,6 +21,12 @@ export class WorldClock {
     this.paused = false;
   }
 
+  reset(initialSeconds = 9.5 * 3600, timeScale = 1): void {
+    this.totalSeconds = Math.max(0, initialSeconds);
+    this.timeScale = timeScale;
+    this.paused = false;
+  }
+
   step(realDtSec: number): void {
     if (this.paused) return;
     this.totalSeconds += realDtSec * this.baseRate * this.timeScale;

@@ -25,6 +25,14 @@ export class CameraRig {
   private currentLook = new THREE.Vector3(0, 1.4, 24);
   private titleTime = 0;
 
+  reset(): void {
+    this.yaw = 0;
+    this.pitch = 0.32;
+    this.distance = 7.2;
+    this.mode = 'third-person';
+    this.observerPos.set(0, 8, 24);
+  }
+
   snapToTarget(target: Vec3, yaw: number, interiorBounds: InteriorCameraBounds | null = null): void {
     this.yaw = yaw + Math.PI;
     const sinY = Math.sin(this.yaw);

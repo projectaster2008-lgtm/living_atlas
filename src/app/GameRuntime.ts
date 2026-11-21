@@ -168,30 +168,40 @@ export class GameRuntime {
 
   public startNewGame(): void {
     this.audio.unlockAndStart();
-    this.clock.totalSeconds = 9.5 * 3600;
-    this.clock.paused = false;
-    this.clock.timeScale = 1;
+    if (this.activeDialogue) {
+      this.activeDialogue = null;
+      this.callbacks.onDialogueChange(null);
+    }
+    this.clock.reset(9.5 * 3600, 1);
+    this.unlockedRegions = new Set<RegionId>([
+      'gateway',
+      'solara-bay',
+      'vesper-city',
+      'verdant-highlands',
+      'aether-district',
+    ]);
     this.discoveredLandmarks = new Set(['sb-plaza']);
     this.collectedIds.clear();
     this.worldFlags.clear();
     this.photos = [];
-    this.relationships.load({});
-    this.dialogueEngine.load({}, {});
+    this.relationships.reset();
+    this.dialogueEngine.reset();
     this.missions.reset();
-    for (const id of ALL_REGION_IDS) {
-      const m = getRegionManifest(id);
-      this.weather.registerRegion(id, m.weatherWeights, {
-        current: 'clear',
-        next: 'clear',
-        progress: 1,
-        durationSec: 220,
-      });
-      this.npcSim.registerRegion(m, this.clock.totalSeconds);
-      this.vehicles.registerRegion(m);
-    }
-    this.playerCtrl.state.mode = 'foot';
-    this.playerCtrl.state.activeVehicleId = null;
+    this.weather.reset();
+    this.npcSim.reset(this.clock.totalSeconds);
+    this.traffic.reset();
+    this.vehicles.reset();
+
+    const solara = getRegionManifest('solara-bay');
+    this.playerCtrl.reset('solara-bay', solara.arrivalSpawn, solara.arrivalYaw);
+    this.cameraRig.reset();
     this.activeInteriorId = null;
+    this.autosaveTimer = 0;
+    this.lastPromptKey = '';
+    this.currentPrompt = null;
+    this.notificationBanner = null;
+    this.notificationTimer = 0;
+
     this.loadRegion('solara-bay', false);
     this.setShellState('playing');
     this.notify('Welcome to Solara Bay — Talk to Elena Vance near Central Plaza');

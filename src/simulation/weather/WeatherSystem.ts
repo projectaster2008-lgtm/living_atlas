@@ -32,14 +32,24 @@ const WEATHER_PARAMS: Record<
 export class WeatherSystem {
   private states = new Map<RegionId, RegionWeatherState>();
   private weightsByRegion = new Map<RegionId, Record<WeatherKind, number>>();
+  private initialConfigs = new Map<
+    RegionId,
+    { weights: Record<WeatherKind, number>; initial?: Partial<RegionWeatherState> }
+  >();
+  private readonly seed: number;
   private prng: SeededPRNG;
 
   constructor(seed: number) {
+    this.seed = seed;
     this.prng = new SeededPRNG(seed ^ 0x9e3779b9);
   }
 
   registerRegion(regionId: RegionId, weights: Record<WeatherKind, number>, initial?: Partial<RegionWeatherState>): void {
     this.weightsByRegion.set(regionId, weights);
+    this.initialConfigs.set(regionId, {
+      weights: { ...weights },
+      initial: initial ? { ...initial } : undefined,
+    });
     if (!this.states.has(regionId)) {
       const start = initial?.current ?? this.pickWeightedWeather(weights);
       this.states.set(regionId, {
@@ -47,6 +57,21 @@ export class WeatherSystem {
         next: initial?.next ?? start,
         progress: initial?.progress ?? 1,
         durationSec: initial?.durationSec ?? 180,
+        elapsedSec: 0,
+      });
+    }
+  }
+
+  reset(): void {
+    this.prng = new SeededPRNG(this.seed ^ 0x9e3779b9);
+    this.states.clear();
+    for (const [regionId, cfg] of this.initialConfigs.entries()) {
+      const start = cfg.initial?.current ?? this.pickWeightedWeather(cfg.weights);
+      this.states.set(regionId, {
+        current: start,
+        next: cfg.initial?.next ?? start,
+        progress: cfg.initial?.progress ?? 1,
+        durationSec: cfg.initial?.durationSec ?? 180,
         elapsedSec: 0,
       });
     }

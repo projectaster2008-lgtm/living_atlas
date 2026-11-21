@@ -15,10 +15,20 @@ export class TrafficSystem {
   private signals: TrafficSignalDef[] = [];
   private vehicles: TrafficVehicleState[] = [];
   private elapsedClockSec = 0;
+  private readonly seed: number;
   private prng: SeededPRNG;
 
   constructor(seed: number) {
+    this.seed = seed;
     this.prng = new SeededPRNG(seed ^ 0x7f4a7c15);
+  }
+
+  reset(): void {
+    this.prng = new SeededPRNG(this.seed ^ 0x7f4a7c15);
+    this.elapsedClockSec = 0;
+    this.nodes.clear();
+    this.signals = [];
+    this.vehicles = [];
   }
 
   loadRegion(manifest: RegionManifest, maxTraffic = 8): void {

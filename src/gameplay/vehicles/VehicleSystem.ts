@@ -12,8 +12,10 @@ export class VehicleSystem {
   private specs = new Map<string, VehicleSpec>();
   private statesByRegion = new Map<RegionId, VehicleRuntimeState[]>();
   private collidersByRegion = new Map<RegionId, ColliderBox[]>();
+  private manifestsByRegion = new Map<RegionId, RegionManifest>();
 
   registerRegion(manifest: RegionManifest): void {
+    this.manifestsByRegion.set(manifest.id, manifest);
     this.collidersByRegion.set(manifest.id, buildBuildingColliders(manifest.buildings));
     const list: VehicleRuntimeState[] = [];
     for (const spec of manifest.vehicles) {
@@ -32,6 +34,13 @@ export class VehicleSystem {
       });
     }
     this.statesByRegion.set(manifest.id, list);
+  }
+
+  reset(): void {
+    this.statesByRegion.clear();
+    for (const manifest of this.manifestsByRegion.values()) {
+      this.registerRegion(manifest);
+    }
   }
 
   loadSavedStates(saved: Record<string, { position: { x: number; y: number; z: number }; yaw: number; condition: number }>): void {

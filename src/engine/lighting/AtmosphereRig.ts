@@ -173,6 +173,7 @@ export class AtmosphereRig {
   }
 
   dispose(): void {
+    this.rainMesh.dispose();
     this.rainMesh.geometry.dispose();
     (this.rainMesh.material as THREE.Material).dispose();
     this.sky.geometry.dispose();

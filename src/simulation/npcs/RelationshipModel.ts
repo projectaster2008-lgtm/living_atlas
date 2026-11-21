@@ -29,6 +29,10 @@ export class RelationshipModel {
     }
   }
 
+  reset(): void {
+    this.records.clear();
+  }
+
   get(npcId: string): RelationshipAxes {
     let rec = this.records.get(npcId);
     if (!rec) {

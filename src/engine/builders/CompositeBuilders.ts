@@ -547,8 +547,8 @@ export function buildInstancedPropClusters(
       );
       crownGeo.translate(0, cluster.kind === 'palm' ? 5.2 : cluster.kind === 'pine' ? 5.2 : 4.6, 0);
 
-      const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
-      const crownMesh = new THREE.InstancedMesh(crownGeo, leafMat, count);
+      const trunkMesh = registry.track(new THREE.InstancedMesh(trunkGeo, trunkMat, count), scope);
+      const crownMesh = registry.track(new THREE.InstancedMesh(crownGeo, leafMat, count), scope);
       trunkMesh.castShadow = true;
       crownMesh.castShadow = true;
 
@@ -587,8 +587,8 @@ export function buildInstancedPropClusters(
         scope,
       );
 
-      const poles = new THREE.InstancedMesh(poleGeo, poleMat, count);
-      const globes = new THREE.InstancedMesh(globeGeo, globeMat, count);
+      const poles = registry.track(new THREE.InstancedMesh(poleGeo, poleMat, count), scope);
+      const globes = registry.track(new THREE.InstancedMesh(globeGeo, globeMat, count), scope);
       for (let i = 0; i < count; i++) {
         const p = cluster.positions[i];
         dummy.position.set(p.x, p.y, p.z);
@@ -611,7 +611,7 @@ export function buildInstancedPropClusters(
         { color: '#7a563b', roughness: 0.72, metalness: 0.08 },
         scope,
       );
-      const benches = new THREE.InstancedMesh(seatGeo, benchMat, count);
+      const benches = registry.track(new THREE.InstancedMesh(seatGeo, benchMat, count), scope);
       benches.castShadow = true;
       for (let i = 0; i < count; i++) {
         const p = cluster.positions[i];
@@ -652,7 +652,7 @@ export function buildInstancedPropClusters(
         },
         scope,
       );
-      const inst = new THREE.InstancedMesh(geo, mat, count);
+      const inst = registry.track(new THREE.InstancedMesh(geo, mat, count), scope);
       inst.castShadow = true;
       for (let i = 0; i < count; i++) {
         const p = cluster.positions[i];

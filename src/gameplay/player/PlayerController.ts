@@ -1,5 +1,12 @@
 import { clamp, damp, dampAngle } from '../../shared/math/prng';
-import { BuildingDef, InteriorDef, PlayerRuntimeState, RegionManifest } from '../../shared/types/world';
+import {
+  BuildingDef,
+  InteriorDef,
+  PlayerRuntimeState,
+  RegionId,
+  RegionManifest,
+  Vec3,
+} from '../../shared/types/world';
 import { InputHub } from '../input/InputHub';
 
 export interface ColliderBox {
@@ -76,6 +83,29 @@ export class PlayerController {
       position: { x: 0, y: 0, z: 26 },
       velocity: { x: 0, y: 0, z: 0 },
       yaw: Math.PI,
+      isGrounded: true,
+      mode: 'foot',
+      activeVehicleId: null,
+      gaitPhase: 0,
+      squashY: 1,
+    };
+  }
+
+  reset(
+    regionId: RegionId = 'solara-bay',
+    spawnPosition: Vec3 = { x: 0, y: 0, z: 26 },
+    yaw = Math.PI,
+  ): void {
+    this.jumpBufferTimer = 0;
+    this.coyoteTimer = 0;
+    this.state = {
+      regionId,
+      interiorId: null,
+      exteriorReturnPosition: { ...spawnPosition },
+      exteriorReturnYaw: yaw,
+      position: { ...spawnPosition },
+      velocity: { x: 0, y: 0, z: 0 },
+      yaw,
       isGrounded: true,
       mode: 'foot',
       activeVehicleId: null,

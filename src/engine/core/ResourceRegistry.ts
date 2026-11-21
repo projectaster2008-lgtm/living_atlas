@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 
-type DisposableResource = THREE.BufferGeometry | THREE.Material | THREE.Texture;
+type DisposableResource =
+  | THREE.BufferGeometry
+  | THREE.Material
+  | THREE.Texture
+  | THREE.InstancedMesh;
 
 interface TrackedEntry {
   resource: DisposableResource;
@@ -22,6 +26,9 @@ export class ResourceRegistry {
 
   trackObject3D(root: THREE.Object3D, scope: string): void {
     root.traverse((obj) => {
+      if ((obj as THREE.InstancedMesh).isInstancedMesh) {
+        this.track(obj as THREE.InstancedMesh, scope);
+      }
       if ((obj as THREE.Mesh).isMesh) {
         const mesh = obj as THREE.Mesh;
         if (mesh.geometry) this.track(mesh.geometry, scope);

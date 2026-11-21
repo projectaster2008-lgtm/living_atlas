@@ -30,6 +30,11 @@ export class DialogueEngine {
     }
   }
 
+  reset(): void {
+    this.cooldowns.clear();
+    this.recentByNpc.clear();
+  }
+
   selectNode(profile: NpcProfile, runtime: NpcRuntimeState, ctx: DialogueContext): DialogueNode {
     const recent = this.recentByNpc.get(profile.id) ?? [];
 

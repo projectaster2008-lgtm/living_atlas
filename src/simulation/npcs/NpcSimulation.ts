@@ -35,9 +35,29 @@ export class NpcSimulation {
   private offscreenTickAcc = 0;
   private socialCheckAcc = 0;
   private lastVisitedTimeByRegion = new Map<RegionId, number>();
+  private activatedRegions = new Set<RegionId>();
+  private readonly seed: number;
 
   constructor(seed: number) {
+    this.seed = seed;
     this.prng = new SeededPRNG(seed ^ 0x517cc1b7);
+  }
+
+  reset(initialClockSec = 9.5 * 3600): void {
+    this.prng = new SeededPRNG(this.seed ^ 0x517cc1b7);
+    this.districtTickAcc = 0;
+    this.offscreenTickAcc = 0;
+    this.socialCheckAcc = 0;
+    this.activatedRegions.clear();
+    this.lastVisitedTimeByRegion.clear();
+    const manifests = Array.from(this.manifests.values());
+    for (const manifest of manifests) {
+      this.registerRegion(manifest, initialClockSec);
+    }
+  }
+
+  getLastVisitedTime(regionId: RegionId): number | undefined {
+    return this.lastVisitedTimeByRegion.get(regionId);
   }
 
   registerRegion(manifest: RegionManifest, initialClockSec: number): void {
@@ -86,10 +106,21 @@ export class NpcSimulation {
     if (!manifest) return;
     this.pathfinder.loadGraph(manifest.navNodes);
 
-    // Fast-forward aggregate state from last visited clock time
+    const isFirstActivation = !this.activatedRegions.has(regionId);
     const lastSec = this.lastVisitedTimeByRegion.get(regionId) ?? currentClockSec;
     const elapsed = Math.max(0, currentClockSec - lastSec);
-    this.fastForwardRegion(regionId, elapsed, hourOfDay, weather);
+
+    if (isFirstActivation || elapsed > 0) {
+      this.fastForwardRegion(regionId, elapsed, hourOfDay, weather, isFirstActivation);
+      this.activatedRegions.add(regionId);
+    } else {
+      const list = this.npcsByRegion.get(regionId) ?? [];
+      for (const npc of list) {
+        if (npc.tier === 'inactive') {
+          npc.tier = 'offscreen';
+        }
+      }
+    }
     this.lastVisitedTimeByRegion.set(regionId, currentClockSec);
   }
 
@@ -105,22 +136,73 @@ export class NpcSimulation {
 
   private fastForwardRegion(
     regionId: RegionId,
-    _elapsedSec: number,
+    elapsedSec: number,
     hourOfDay: number,
     weather: WeatherKind,
+    isInitial: boolean,
   ): void {
     const manifest = this.manifests.get(regionId);
     const list = this.npcsByRegion.get(regionId);
     if (!manifest || !list) return;
 
+    const bounded = Math.min(Math.max(0, elapsedSec), 24 * 3600);
+    // Match active simulation time scale: WorldClock runs at 24x simDt
+    const simElapsed = bounded / 24;
     const rainRisk = weather === 'rain' || weather === 'storm';
+
+    if (!isInitial && bounded > 0 && simElapsed < 5) {
+      for (const npc of list) {
+        const profile = this.profileById.get(npc.id);
+        if (!profile) continue;
+        updateNeeds(npc.needs, npc.behavior, simElapsed, weather);
+        if (npc.path.length > 0 && npc.pathIndex < npc.path.length) {
+          const wp = npc.path[npc.pathIndex];
+          const dx = wp.x - npc.position.x;
+          const dz = wp.z - npc.position.z;
+          const d = Math.hypot(dx, dz);
+          if (d > 0.01) {
+            const moveSpeed = npc.behavior === 'commute' ? 2.45 : 1.75;
+            const step = Math.min(d, moveSpeed * simElapsed);
+            npc.position.x += (dx / d) * step;
+            npc.position.z += (dz / d) * step;
+            npc.yaw = Math.atan2(dx, dz);
+            npc.gaitPhase += step * 2.9;
+          }
+        }
+        this.enforceRegionClearance(regionId, npc.position);
+        npc.tier = 'offscreen';
+        this.applyMood(npc, profile);
+      }
+      return;
+    }
+
+    const bucket = Math.floor(bounded / 60);
+    const slices = !isInitial && simElapsed >= 5 ? Math.min(24, Math.max(1, Math.ceil(simElapsed / 30))) : 0;
+    const sliceSimDt = slices > 0 ? simElapsed / slices : 0;
+    const startHour = hourOfDay - bounded / 3600;
+
     for (const npc of list) {
       const profile = this.profileById.get(npc.id);
       if (!profile) continue;
+
+      for (let s = 0; s < slices; s++) {
+        const rawH = startHour + ((s + 0.5) / slices) * (bounded / 3600);
+        const sliceHour = ((rawH % 24) + 24) % 24;
+        const sliceSched = evaluateSchedule(profile, sliceHour);
+        let sliceBehavior: NpcRuntimeState['behavior'] =
+          sliceSched.intent === 'work' ? 'work' : sliceSched.intent === 'rest' ? 'sit' : 'idle';
+        if (rainRisk) sliceBehavior = 'shelter';
+        else if (npc.needs.hunger < 45) sliceBehavior = 'eat';
+        else if (npc.needs.energy < 25) sliceBehavior = 'sit';
+        updateNeeds(npc.needs, sliceBehavior, sliceSimDt, weather);
+      }
+
       const sched = evaluateSchedule(profile, hourOfDay);
       let targetPos = this.resolveLocationPos(manifest, sched.targetLocationId) ?? manifest.arrivalSpawn;
+      let targetLocationId = sched.targetLocationId;
       let behavior: NpcRuntimeState['behavior'] =
         sched.intent === 'work' ? 'work' : sched.intent === 'rest' ? 'sit' : 'idle';
+      let goal = `Schedule: ${sched.intent}`;
 
       if (rainRisk) {
         const shelter = manifest.buildings.find((b) => b.isShelter);
@@ -130,26 +212,53 @@ export class NpcSimulation {
             y: 0,
             z: shelter.position.z + (shelter.doorLocalOffset?.z ?? shelter.size.z * 0.5 + 2.5),
           };
+          targetLocationId = shelter.id;
           behavior = 'shelter';
+          goal = 'Seek rain shelter';
         }
       }
 
+      const jx = (this.deterministicUnit(npc.id, bucket * 3 + 1) - 0.5) * 5.2;
+      const jz = (this.deterministicUnit(npc.id, bucket * 3 + 2) - 0.5) * 5.2;
       if (regionId !== 'gateway' && Math.hypot(targetPos.x, targetPos.z) < 4.5) {
         const ringPos = this.ringOffsetForNpc(npc.id, targetPos, 5.4);
-        npc.position.x = ringPos.x + this.prng.range(-0.6, 0.6);
-        npc.position.z = ringPos.z + this.prng.range(-0.6, 0.6);
+        npc.position.x = ringPos.x + jx * 0.23;
+        npc.position.z = ringPos.z + jz * 0.23;
       } else {
-        npc.position.x = targetPos.x + this.prng.range(-2.6, 2.6);
-        npc.position.z = targetPos.z + this.prng.range(-2.6, 2.6);
+        npc.position.x = targetPos.x + jx;
+        npc.position.z = targetPos.z + jz;
       }
       npc.position.y = 0;
       this.enforceRegionClearance(regionId, npc.position);
       npc.path = [];
+      npc.pathIndex = 0;
+      npc.speed = 0;
+      npc.tier = 'offscreen';
       npc.behavior = behavior;
-      npc.targetLocationId = sched.targetLocationId;
-      npc.currentGoal = `Schedule: ${sched.intent}`;
-      npc.decisionCooldownSec = this.prng.range(0.5, 5.0);
+      npc.targetLocationId = targetLocationId;
+      npc.currentGoal = goal;
+      npc.decisionCooldownSec = 0.5 + this.deterministicUnit(npc.id, bucket * 3 + 3) * 4.5;
+      this.applyMood(npc, profile);
     }
+  }
+
+  private deterministicUnit(id: string, salt: number): number {
+    let h = (this.seed ^ Math.imul(salt | 0, 374761393)) | 0;
+    for (let i = 0; i < id.length; i++) {
+      h = Math.imul(h ^ id.charCodeAt(i), 2246822519);
+      h ^= h >>> 13;
+    }
+    h = Math.imul(h, 3266489917);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+
+  private applyMood(npc: NpcRuntimeState, profile: NpcProfile): void {
+    if (npc.behavior === 'shelter') npc.mood = 'sheltered';
+    else if (npc.needs.energy < 25) npc.mood = 'weary';
+    else if (npc.behavior === 'work') npc.mood = 'focused';
+    else if (profile.personality.warmth > 0.65 && npc.needs.social > 45) npc.mood = 'cheerful';
+    else npc.mood = 'content';
   }
 
   step(
