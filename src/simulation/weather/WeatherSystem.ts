@@ -25,8 +25,8 @@ const WEATHER_PARAMS: Record<
   clear: { rain: 0, fog: 1.0, wind: 0.22, wetness: 0.0, cloud: 0.1 },
   overcast: { rain: 0, fog: 1.45, wind: 0.42, wetness: 0.12, cloud: 0.72 },
   fog: { rain: 0, fog: 3.1, wind: 0.18, wetness: 0.25, cloud: 0.55 },
-  rain: { rain: 0.75, fog: 1.9, wind: 0.62, wetness: 0.85, cloud: 0.88 },
-  storm: { rain: 1.0, fog: 2.4, wind: 0.96, wetness: 1.0, cloud: 1.0 },
+  rain: { rain: 0.78, fog: 1.95, wind: 0.62, wetness: 0.85, cloud: 0.88 },
+  storm: { rain: 1.0, fog: 2.45, wind: 0.96, wetness: 1.0, cloud: 1.0 },
 };
 
 export class WeatherSystem {
@@ -86,7 +86,8 @@ export class WeatherSystem {
     if (!s) return;
     s.current = s.next;
     s.next = kind;
-    s.progress = 0;
+    // Start well past midpoint so manual overrides reflect atmosphere/rain promptly even under low timeScale
+    s.progress = s.current === kind ? 1 : 0.72;
     s.elapsedSec = 0;
     s.durationSec = 210;
   }

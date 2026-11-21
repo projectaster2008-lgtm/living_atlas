@@ -2,14 +2,48 @@
 
 @layer base {
   :root {
-    --atlas-bg: #0c121b;
-    --atlas-panel: rgba(13, 19, 29, 0.9);
-    --atlas-panel-soft: rgba(16, 24, 36, 0.82);
-    --atlas-border: rgba(232, 219, 195, 0.18);
-    --atlas-gold: #e0a952;
-    --atlas-teal: #4db6ac;
-    --atlas-text: #f3efe6;
-    --atlas-muted: #9ba8b8;
+    /* Cartographer's Field Atlas — Semantic Surface & Ink Ladder */
+    --atlas-ink-deep: #090e16;
+    --atlas-ink: #0d1520;
+    --atlas-ink-elevated: #131e2d;
+    --atlas-ink-interactive: #19283c;
+    --atlas-panel: rgba(11, 17, 26, 0.90);
+    --atlas-panel-solid: rgba(13, 21, 32, 0.97);
+    --atlas-panel-soft: rgba(15, 24, 36, 0.78);
+    --atlas-scrim: rgba(7, 11, 17, 0.76);
+
+    /* Text Hierarchy */
+    --atlas-text: #f3ede0;
+    --atlas-text-secondary: #cbd5e1;
+    --atlas-muted: #8fa0b3;
+
+    /* Domain Accents (60-30-10 discipline) */
+    --atlas-brass: #d9a14a;
+    --atlas-brass-hover: #e5b363;
+    --atlas-brass-soft: rgba(217, 161, 74, 0.16);
+    --atlas-teal: #58b4aa;
+    --atlas-teal-soft: rgba(88, 180, 170, 0.16);
+    --atlas-danger: #d96b6b;
+
+    /* Hairline Dividers & Elevation */
+    --atlas-hairline: rgba(243, 237, 224, 0.12);
+    --atlas-hairline-strong: rgba(217, 161, 74, 0.34);
+    --atlas-shadow-modal: 0 24px 60px rgba(4, 8, 14, 0.65);
+    --atlas-shadow-hud: 0 8px 24px rgba(4, 8, 14, 0.42);
+
+    /* Typography Stacks (zero remote font requests) */
+    --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+
+    /* Corner Radii */
+    --atlas-radius-sm: 4px;
+    --atlas-radius-md: 8px;
+    --atlas-radius-lg: 12px;
+
+    /* Motion */
+    --atlas-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --atlas-duration: 180ms;
   }
 
   html,
@@ -20,9 +54,27 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
-    font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--atlas-ink-deep);
+    color: var(--atlas-text);
+    font-family: var(--font-sans);
     user-select: none;
   }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--atlas-brass);
+    outline-offset: 2px;
+  }
+}
+
+.font-atlas-display {
+  font-family: var(--font-display);
+}
+
+.font-atlas-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .tabular-nums {
@@ -30,7 +82,45 @@
 }
 
 .hud-text-shadow {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 1px 4px rgba(4, 8, 14, 0.9), 0 0 12px rgba(4, 8, 14, 0.55);
+}
+
+.atlas-surface {
+  background-color: var(--atlas-panel);
+  border: 1px solid var(--atlas-hairline);
+  box-shadow: var(--atlas-shadow-hud);
+}
+
+.atlas-modal {
+  background-color: var(--atlas-panel-solid);
+  border: 1px solid var(--atlas-hairline);
+  box-shadow: var(--atlas-shadow-modal);
+}
+
+.atlas-divider {
+  border-color: var(--atlas-hairline);
+}
+
+.atlas-btn-primary {
+  background-color: var(--atlas-brass);
+  color: var(--atlas-ink-deep);
+  transition: background-color var(--atlas-duration) var(--atlas-ease), transform var(--atlas-duration) var(--atlas-ease);
+}
+
+.atlas-btn-primary:hover:not(:disabled) {
+  background-color: var(--atlas-brass-hover);
+}
+
+.atlas-btn-secondary {
+  background-color: var(--atlas-ink-elevated);
+  color: var(--atlas-text);
+  border: 1px solid var(--atlas-hairline);
+  transition: background-color var(--atlas-duration) var(--atlas-ease), border-color var(--atlas-duration) var(--atlas-ease);
+}
+
+.atlas-btn-secondary:hover:not(:disabled) {
+  background-color: var(--atlas-ink-interactive);
+  border-color: var(--atlas-hairline-strong);
 }
 
 .atlas-scroll::-webkit-scrollbar {
@@ -38,10 +128,20 @@
 }
 
 .atlas-scroll::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(243, 237, 224, 0.04);
 }
 
 .atlas-scroll::-webkit-scrollbar-thumb {
-  background: rgba(224, 169, 82, 0.35);
+  background: rgba(217, 161, 74, 0.35);
   border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

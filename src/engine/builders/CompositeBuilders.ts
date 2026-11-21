@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BuildingDef, NpcProfile, PropClusterDef, VehicleSpec } from '../../shared/types/world';
 import { ResourceRegistry } from '../core/ResourceRegistry';
 import { MaterialLibrary } from '../materials/MaterialLibrary';
+import { buildArchitecturalBuilding } from './ArchitectureBuilder';
 
 export interface ActorRigParts {
   root: THREE.Group;
@@ -18,6 +20,52 @@ export interface VehicleMeshParts {
   wheels: THREE.Mesh[];
   frontLeftPivot: THREE.Group;
   frontRightPivot: THREE.Group;
+}
+
+function normalizeAndColor(
+  source: THREE.BufferGeometry,
+  hexColor: string | null,
+  tx = 0,
+  ty = 0,
+  tz = 0,
+  rx = 0,
+  ry = 0,
+  rz = 0,
+): THREE.BufferGeometry {
+  const g = source.index ? source.toNonIndexed() : source.clone();
+  source.dispose();
+  if (rx !== 0) g.rotateX(rx);
+  if (ry !== 0) g.rotateY(ry);
+  if (rz !== 0) g.rotateZ(rz);
+  if (tx !== 0 || ty !== 0 || tz !== 0) g.translate(tx, ty, tz);
+  if (!g.attributes.normal) g.computeVertexNormals();
+  if (!g.attributes.uv) {
+    const count = g.attributes.position.count;
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+  }
+  for (const attr of Object.keys(g.attributes)) {
+    if (attr !== 'position' && attr !== 'normal' && attr !== 'uv' && attr !== 'color') {
+      g.deleteAttribute(attr);
+    }
+  }
+  if (hexColor) {
+    const c = new THREE.Color(hexColor);
+    const count = g.attributes.position.count;
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
+  return g;
+}
+
+function mergeClusterParts(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged ?? new THREE.BoxGeometry(0.5, 0.5, 0.5);
 }
 
 export function createContactShadow(
@@ -251,7 +299,6 @@ export function buildVehicleMesh(
     scope,
   );
   chassisGeo.center();
-  // Rotate so length is along +Z
   chassisGeo.rotateY(Math.PI / 2);
   const chassis = new THREE.Mesh(chassisGeo, bodyMat);
   chassis.position.y = 0.62;
@@ -270,7 +317,6 @@ export function buildVehicleMesh(
   cabin.castShadow = true;
   root.add(cabin);
 
-  // Roof cap
   const roof = new THREE.Mesh(
     registry.track(new THREE.BoxGeometry(wid * 0.82, 0.08, cabinLen * 0.92), scope),
     bodyMat,
@@ -349,152 +395,7 @@ export function buildBuildingMesh(
   registry: ResourceRegistry,
   scope: string,
 ): THREE.Group {
-  const group = new THREE.Group();
-  group.position.set(b.position.x, b.position.y, b.position.z);
-  group.rotation.y = b.yaw;
-
-  const bump = mats.getGrainBumpTexture(
-    b.style === 'timber-cabin' || b.style === 'alpine-lodge' ? 'wood' : 'stone',
-    4,
-  );
-  const wallMat = mats.getStandardMaterial(
-    `b-wall:${b.primaryColor}:${b.style}`,
-    { color: b.primaryColor, roughness: 0.78, metalness: 0.04, bumpMap: bump, bumpScale: 0.04 },
-    scope,
-  );
-  const trimMat = mats.getStandardMaterial(
-    `b-trim:${b.trimColor}`,
-    { color: b.trimColor, roughness: 0.45, metalness: 0.25 },
-    scope,
-  );
-  const roofMat = mats.getStandardMaterial(
-    `b-roof:${b.roofColor}`,
-    { color: b.roofColor, roughness: 0.65, metalness: 0.12 },
-    scope,
-  );
-  const windowMat = mats.getStandardMaterial(
-    `b-win:${b.style}`,
-    {
-      color: b.style.includes('urban') || b.style.includes('aether') ? '#709cb8' : '#eed8a8',
-      roughness: 0.14,
-      metalness: 0.45,
-      emissive: '#ffd58c',
-      emissiveIntensity: b.interiorId ? 0.28 : 0.1,
-    },
-    scope,
-  );
-
-  const { x: w, y: h, z: d } = b.size;
-
-  // 1. Stone/concrete foundation plinth
-  const plinth = new THREE.Mesh(
-    registry.track(new THREE.BoxGeometry(w + 0.5, 0.55, d + 0.5), scope),
-    trimMat,
-  );
-  plinth.position.y = 0.275;
-  plinth.receiveShadow = true;
-  group.add(plinth);
-
-  // 2. Primary massing
-  const body = new THREE.Mesh(
-    registry.track(new THREE.BoxGeometry(w, h - 0.5, d), scope),
-    wallMat,
-  );
-  body.position.y = 0.5 + (h - 0.5) * 0.5;
-  body.castShadow = true;
-  body.receiveShadow = true;
-  group.add(body);
-
-  // 3. Cornice / roof crown
-  if (b.style === 'coastal-villa' || b.style === 'timber-cabin' || b.style === 'alpine-lodge') {
-    const roofH = Math.min(3.2, w * 0.25);
-    const roof = new THREE.Mesh(
-      registry.track(new THREE.ConeGeometry(Math.max(w, d) * 0.74, roofH, 4), scope),
-      roofMat,
-    );
-    roof.rotation.y = Math.PI / 4;
-    roof.position.y = h + roofH * 0.5 - 0.1;
-    roof.castShadow = true;
-    group.add(roof);
-  } else {
-    const cornice = new THREE.Mesh(
-      registry.track(new THREE.BoxGeometry(w + 0.6, 0.45, d + 0.6), scope),
-      roofMat,
-    );
-    cornice.position.y = h + 0.15;
-    group.add(cornice);
-
-    // Rooftop mechanical / skylight crown
-    const skylight = new THREE.Mesh(
-      registry.track(new THREE.BoxGeometry(w * 0.45, 0.9, d * 0.45), scope),
-      trimMat,
-    );
-    skylight.position.y = h + 0.8;
-    group.add(skylight);
-  }
-
-  // 4. Horizontal window ribbons per floor
-  const floors = Math.max(1, Math.floor(h / 4));
-  for (let f = 0; f < floors; f++) {
-    const wy = 2.4 + f * 3.6;
-    if (wy > h - 1.2) break;
-    const ribbon = new THREE.Mesh(
-      registry.track(new THREE.BoxGeometry(w + 0.08, 1.35, d * 0.78), scope),
-      windowMat,
-    );
-    ribbon.position.y = wy;
-    const ribbonZ = new THREE.Mesh(
-      registry.track(new THREE.BoxGeometry(w * 0.78, 1.35, d + 0.08), scope),
-      windowMat,
-    );
-    ribbonZ.position.y = wy;
-    group.add(ribbon, ribbonZ);
-  }
-
-  // 5. Doorway frame with jambs & welcoming canopy (always on +Z local front unless specified)
-  const doorOffset = b.doorLocalOffset ?? { x: 0, y: 0, z: d * 0.5 + 0.1 };
-  const doorFaceZ = Math.abs(doorOffset.z) >= Math.abs(doorOffset.x);
-  const doorGroup = new THREE.Group();
-  if (doorFaceZ) {
-    doorGroup.position.set(0, 0, Math.sign(doorOffset.z || 1) * (d * 0.5 + 0.06));
-    if (doorOffset.z < 0) doorGroup.rotation.y = Math.PI;
-  } else {
-    doorGroup.position.set(Math.sign(doorOffset.x) * (w * 0.5 + 0.06), 0, 0);
-    doorGroup.rotation.y = doorOffset.x > 0 ? Math.PI / 2 : -Math.PI / 2;
-  }
-
-  const doorJambL = new THREE.Mesh(
-    registry.track(new THREE.BoxGeometry(0.28, 3.1, 0.35), scope),
-    trimMat,
-  );
-  doorJambL.position.set(-1.15, 1.55, 0);
-  const doorJambR = doorJambL.clone();
-  doorJambR.position.x = 1.15;
-
-  const doorPanel = new THREE.Mesh(
-    registry.track(new THREE.BoxGeometry(2.0, 2.9, 0.18), scope),
-    b.interiorId
-      ? mats.getStandardMaterial(
-          'door-active',
-          { color: '#2b3a4a', emissive: '#e0a952', emissiveIntensity: 0.45, roughness: 0.25 },
-          scope,
-        )
-      : roofMat,
-  );
-  doorPanel.position.set(0, 1.45, -0.05);
-
-  const awning = new THREE.Mesh(
-    registry.track(new THREE.BoxGeometry(3.4, 0.22, 1.5), scope),
-    trimMat,
-  );
-  awning.position.set(0, 3.25, 0.65);
-  awning.rotation.x = 0.12;
-  awning.castShadow = true;
-
-  doorGroup.add(doorJambL, doorJambR, doorPanel, awning);
-  group.add(doorGroup);
-
-  return group;
+  return buildArchitecturalBuilding(b, mats, registry, scope);
 }
 
 export function buildInstancedPropClusters(
@@ -515,37 +416,112 @@ export function buildInstancedPropClusters(
       const trunkMat = mats.getStandardMaterial(
         `trunk:${cluster.kind}`,
         {
-          color: cluster.kind === 'palm' ? '#7a634c' : '#594230',
+          color: cluster.kind === 'palm' ? '#7a624a' : '#57402e',
           roughness: 0.9,
           metalness: 0.0,
         },
         scope,
       );
       const leafColor =
-        cluster.kind === 'palm' ? '#4a8552' : cluster.kind === 'pine' ? '#2c5439' : '#4a7a48';
+        cluster.kind === 'palm' ? '#498650' : cluster.kind === 'pine' ? '#2c5439' : '#4b7a48';
       const leafMat = mats.getStandardMaterial(
         `foliage:${cluster.kind}`,
         { color: leafColor, roughness: 0.78, metalness: 0.02 },
         scope,
       );
 
-      const trunkGeo = registry.track(
-        cluster.kind === 'palm'
-          ? new THREE.CylinderGeometry(0.16, 0.28, 5.2, 8)
-          : new THREE.CylinderGeometry(0.22, 0.34, 3.6, 8),
-        scope,
-      );
-      trunkGeo.translate(0, cluster.kind === 'palm' ? 2.6 : 1.8, 0);
+      let trunkGeo: THREE.BufferGeometry;
+      let crownGeo: THREE.BufferGeometry;
 
-      const crownGeo = registry.track(
-        cluster.kind === 'palm'
-          ? new THREE.ConeGeometry(2.3, 1.4, 7)
-          : cluster.kind === 'pine'
-            ? new THREE.ConeGeometry(2.1, 5.6, 8)
-            : new THREE.DodecahedronGeometry(2.1, 1),
-        scope,
-      );
-      crownGeo.translate(0, cluster.kind === 'palm' ? 5.2 : cluster.kind === 'pine' ? 5.2 : 4.6, 0);
+      if (cluster.kind === 'palm') {
+        // Multi-segment gently curved palm trunk
+        const segParts: THREE.BufferGeometry[] = [];
+        const segH = 1.15;
+        for (let s = 0; s < 5; s++) {
+          const rBot = 0.27 - s * 0.025;
+          const rTop = 0.24 - s * 0.025;
+          const tilt = s * 0.045;
+          const ox = Math.sin(s * 0.32) * s * 0.09;
+          segParts.push(
+            normalizeAndColor(
+              new THREE.CylinderGeometry(rTop, rBot, segH, 8),
+              null,
+              ox,
+              0.55 + s * (segH - 0.05),
+              0,
+              0,
+              0,
+              -tilt,
+            ),
+          );
+        }
+        trunkGeo = registry.track(mergeClusterParts(segParts), scope);
+
+        // Radiating arching palm fronds (9 outer drooping fronds + 5 inner crown fronds)
+        const frondParts: THREE.BufferGeometry[] = [];
+        const crownX = Math.sin(4 * 0.32) * 4 * 0.09;
+        const crownY = 5.45;
+        for (let f = 0; f < 9; f++) {
+          const ang = (f / 9) * Math.PI * 2;
+          const dirX = Math.cos(ang);
+          const dirZ = Math.sin(ang);
+          // Inner frond segment
+          const inner = new THREE.BoxGeometry(0.42, 0.07, 1.55);
+          inner.translate(0, 0, 0.78);
+          inner.rotateX(-0.22);
+          inner.rotateY(ang);
+          inner.translate(crownX, crownY + 0.15, 0);
+          frondParts.push(normalizeAndColor(inner, null));
+          // Outer drooping frond tip
+          const outer = new THREE.BoxGeometry(0.32, 0.05, 1.45);
+          outer.translate(0, -0.35, 2.05);
+          outer.rotateX(0.32);
+          outer.rotateY(ang);
+          outer.translate(crownX + dirX * 0.1, crownY + 0.18, dirZ * 0.1);
+          frondParts.push(normalizeAndColor(outer, null));
+        }
+        for (let f = 0; f < 5; f++) {
+          const ang = (f / 5) * Math.PI * 2 + 0.35;
+          const topF = new THREE.BoxGeometry(0.34, 0.06, 1.2);
+          topF.translate(0, 0.28, 0.55);
+          topF.rotateX(-0.48);
+          topF.rotateY(ang);
+          topF.translate(crownX, crownY + 0.35, 0);
+          frondParts.push(normalizeAndColor(topF, null));
+        }
+        crownGeo = registry.track(mergeClusterParts(frondParts), scope);
+      } else if (cluster.kind === 'pine') {
+        trunkGeo = registry.track(
+          normalizeAndColor(new THREE.CylinderGeometry(0.2, 0.34, 3.6, 8), null, 0, 1.8, 0),
+          scope,
+        );
+        crownGeo = registry.track(
+          mergeClusterParts([
+            normalizeAndColor(new THREE.ConeGeometry(2.2, 2.6, 8), null, 0, 3.6, 0),
+            normalizeAndColor(new THREE.ConeGeometry(1.75, 2.4, 8), null, 0, 4.9, 0),
+            normalizeAndColor(new THREE.ConeGeometry(1.2, 2.1, 8), null, 0, 6.2, 0),
+          ]),
+          scope,
+        );
+      } else {
+        trunkGeo = registry.track(
+          mergeClusterParts([
+            normalizeAndColor(new THREE.CylinderGeometry(0.22, 0.36, 3.3, 8), null, 0, 1.65, 0),
+            normalizeAndColor(new THREE.CylinderGeometry(0.11, 0.16, 1.4, 6), null, 0.45, 3.1, 0, 0, 0, -0.55),
+            normalizeAndColor(new THREE.CylinderGeometry(0.11, 0.16, 1.3, 6), null, -0.45, 3.0, 0.2, 0.2, 0, 0.55),
+          ]),
+          scope,
+        );
+        crownGeo = registry.track(
+          mergeClusterParts([
+            normalizeAndColor(new THREE.DodecahedronGeometry(1.85, 1), null, 0, 4.6, 0),
+            normalizeAndColor(new THREE.DodecahedronGeometry(1.35, 1), null, 1.05, 4.2, 0.45),
+            normalizeAndColor(new THREE.DodecahedronGeometry(1.3, 1), null, -0.95, 4.25, -0.4),
+            normalizeAndColor(new THREE.DodecahedronGeometry(1.15, 1), null, 0.15, 5.4, -0.2),
+          ]),
+          scope,
+        );
+      }
 
       const trunkMesh = registry.track(new THREE.InstancedMesh(trunkGeo, trunkMat, count), scope);
       const crownMesh = registry.track(new THREE.InstancedMesh(crownGeo, leafMat, count), scope);
@@ -571,24 +547,36 @@ export function buildInstancedPropClusters(
       crownMesh.computeBoundingSphere();
       root.add(trunkMesh, crownMesh);
     } else if (cluster.kind === 'lamp') {
-      const poleGeo = registry.track(new THREE.CylinderGeometry(0.08, 0.13, 4.4, 8), scope);
-      poleGeo.translate(0, 2.2, 0);
-      const globeGeo = registry.track(new THREE.SphereGeometry(0.28, 10, 8), scope);
-      globeGeo.translate(0, 4.55, 0);
+      // Multi-part cast-iron heritage lantern post + glowing lantern core
+      const poleGeo = registry.track(
+        mergeClusterParts([
+          normalizeAndColor(new THREE.CylinderGeometry(0.2, 0.28, 0.45, 8), null, 0, 0.225, 0), // pedestal base
+          normalizeAndColor(new THREE.CylinderGeometry(0.085, 0.13, 3.85, 8), null, 0, 2.35, 0), // fluted column
+          normalizeAndColor(new THREE.CylinderGeometry(0.24, 0.12, 0.14, 8), null, 0, 4.3, 0), // lantern collar
+          normalizeAndColor(new THREE.ConeGeometry(0.36, 0.28, 6), null, 0, 4.92, 0), // hexagonal lantern roof
+          normalizeAndColor(new THREE.SphereGeometry(0.07, 6, 6), null, 0, 5.1, 0), // brass finial
+        ]),
+        scope,
+      );
+      const globeGeo = registry.track(
+        normalizeAndColor(new THREE.CylinderGeometry(0.22, 0.17, 0.42, 6), null, 0, 4.58, 0),
+        scope,
+      );
 
       const poleMat = mats.getStandardMaterial(
         'lamp-pole',
-        { color: '#2b333d', roughness: 0.35, metalness: 0.78 },
+        { color: '#28313b', roughness: 0.38, metalness: 0.72 },
         scope,
       );
       const globeMat = mats.getStandardMaterial(
         'lamp-globe',
-        { color: '#fff3d1', emissive: '#ffcf75', emissiveIntensity: 0.95, roughness: 0.2 },
+        { color: '#fff3d1', emissive: '#ffcf75', emissiveIntensity: 1.05, roughness: 0.2 },
         scope,
       );
 
       const poles = registry.track(new THREE.InstancedMesh(poleGeo, poleMat, count), scope);
       const globes = registry.track(new THREE.InstancedMesh(globeGeo, globeMat, count), scope);
+      poles.castShadow = true;
       for (let i = 0; i < count; i++) {
         const p = cluster.positions[i];
         dummy.position.set(p.x, p.y, p.z);
@@ -604,19 +592,45 @@ export function buildInstancedPropClusters(
       globes.computeBoundingSphere();
       root.add(poles, globes);
     } else if (cluster.kind === 'bench') {
-      const seatGeo = registry.track(new THREE.BoxGeometry(2.1, 0.14, 0.65), scope);
-      seatGeo.translate(0, 0.52, 0);
-      const benchMat = mats.getStandardMaterial(
-        'bench-wood',
-        { color: '#7a563b', roughness: 0.72, metalness: 0.08 },
+      // Grounded cast-iron legs + armrests + slatted cedar seat & angled backrest (1 InstancedMesh)
+      const iron = '#27303b';
+      const cedar = '#855c3c';
+      const benchGeo = registry.track(
+        mergeClusterParts([
+          // Front & rear grounded iron legs (left & right)
+          normalizeAndColor(new THREE.BoxGeometry(0.08, 0.48, 0.08), iron, -0.88, 0.24, 0.24),
+          normalizeAndColor(new THREE.BoxGeometry(0.08, 0.48, 0.08), iron, 0.88, 0.24, 0.24),
+          normalizeAndColor(new THREE.BoxGeometry(0.08, 0.88, 0.08), iron, -0.88, 0.44, -0.26),
+          normalizeAndColor(new THREE.BoxGeometry(0.08, 0.88, 0.08), iron, 0.88, 0.44, -0.26),
+          // Side stretchers & armrests
+          normalizeAndColor(new THREE.BoxGeometry(0.08, 0.08, 0.58), iron, -0.88, 0.46, 0),
+          normalizeAndColor(new THREE.BoxGeometry(0.08, 0.08, 0.58), iron, 0.88, 0.46, 0),
+          normalizeAndColor(new THREE.BoxGeometry(0.09, 0.06, 0.56), iron, -0.88, 0.66, 0.0),
+          normalizeAndColor(new THREE.BoxGeometry(0.09, 0.06, 0.56), iron, 0.88, 0.66, 0.0),
+          // 3 Cedar seat planks
+          normalizeAndColor(new THREE.BoxGeometry(1.94, 0.06, 0.16), cedar, 0, 0.51, 0.18),
+          normalizeAndColor(new THREE.BoxGeometry(1.94, 0.06, 0.16), cedar, 0, 0.51, 0.0),
+          normalizeAndColor(new THREE.BoxGeometry(1.94, 0.06, 0.16), cedar, 0, 0.51, -0.18),
+          // 2 Angled cedar backrest slats
+          normalizeAndColor(new THREE.BoxGeometry(1.94, 0.14, 0.06), cedar, 0, 0.72, -0.26, -0.14, 0, 0),
+          normalizeAndColor(new THREE.BoxGeometry(1.94, 0.14, 0.06), cedar, 0, 0.9, -0.29, -0.14, 0, 0),
+        ]),
         scope,
       );
-      const benches = registry.track(new THREE.InstancedMesh(seatGeo, benchMat, count), scope);
+      const benchMat = mats.getStandardMaterial(
+        'bench-wood',
+        { color: '#ffffff', vertexColors: true, roughness: 0.74, metalness: 0.15 },
+        scope,
+      );
+      const benches = registry.track(new THREE.InstancedMesh(benchGeo, benchMat, count), scope);
       benches.castShadow = true;
+      benches.receiveShadow = true;
       for (let i = 0; i < count; i++) {
         const p = cluster.positions[i];
         dummy.position.set(p.x, p.y, p.z);
-        dummy.rotation.set(0, p.x < 0 ? Math.PI / 2 : -Math.PI / 2, 0);
+        // Orient promenade benches facing north toward ocean; plaza benches facing inward
+        const yaw = p.z <= -28 ? Math.PI : p.x < 0 ? Math.PI / 2 : -Math.PI / 2;
+        dummy.rotation.set(0, yaw, 0);
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         benches.setMatrixAt(i, dummy.matrix);
@@ -625,35 +639,66 @@ export function buildInstancedPropClusters(
       benches.computeBoundingSphere();
       root.add(benches);
     } else if (cluster.kind === 'bollard' || cluster.kind === 'rock' || cluster.kind === 'umbrella') {
-      const geo = registry.track(
-        cluster.kind === 'bollard'
-          ? new THREE.CylinderGeometry(0.12, 0.14, 0.95, 8)
-          : cluster.kind === 'rock'
-            ? new THREE.DodecahedronGeometry(1.4, 0)
-            : new THREE.ConeGeometry(1.75, 0.7, 8),
-        scope,
-      );
-      geo.translate(
-        0,
-        cluster.kind === 'bollard' ? 0.48 : cluster.kind === 'rock' ? 0.75 : 2.55,
-        0,
-      );
-      const mat = mats.getStandardMaterial(
-        `prop:${cluster.kind}`,
-        {
-          color:
-            cluster.kind === 'bollard'
-              ? '#4b5563'
-              : cluster.kind === 'rock'
-                ? '#787d82'
-                : '#d97746',
-          roughness: cluster.kind === 'bollard' ? 0.35 : 0.85,
-          metalness: cluster.kind === 'bollard' ? 0.65 : 0.04,
-        },
-        scope,
-      );
+      let geo: THREE.BufferGeometry;
+      let mat: THREE.MeshStandardMaterial;
+
+      if (cluster.kind === 'bollard') {
+        geo = registry.track(
+          mergeClusterParts([
+            normalizeAndColor(new THREE.CylinderGeometry(0.16, 0.19, 0.14, 10), '#334155', 0, 0.07, 0),
+            normalizeAndColor(new THREE.CylinderGeometry(0.11, 0.13, 0.8, 10), '#3d4a5c', 0, 0.52, 0),
+            normalizeAndColor(new THREE.CylinderGeometry(0.125, 0.125, 0.07, 10), '#d9a14a', 0, 0.91, 0),
+            normalizeAndColor(new THREE.SphereGeometry(0.11, 8, 6), '#334155', 0, 0.96, 0),
+          ]),
+          scope,
+        );
+        mat = mats.getStandardMaterial(
+          'prop:bollard',
+          { color: '#ffffff', vertexColors: true, roughness: 0.36, metalness: 0.62 },
+          scope,
+        );
+      } else if (cluster.kind === 'rock') {
+        geo = registry.track(
+          mergeClusterParts([
+            normalizeAndColor(new THREE.DodecahedronGeometry(1.35, 0), '#7a7d80', 0, 0.58, 0, 0.15, 0.3, 0),
+            normalizeAndColor(new THREE.DodecahedronGeometry(0.9, 0), '#686b6e', 0.85, 0.36, 0.45, 0.4, 1.1, 0.2),
+          ]),
+          scope,
+        );
+        mat = mats.getStandardMaterial(
+          'prop:rock',
+          { color: '#ffffff', vertexColors: true, roughness: 0.9, metalness: 0.02 },
+          scope,
+        );
+      } else {
+        // Grounded Coastal Umbrella (stone base + wooden mast + scalloped striped canvas canopy)
+        const mast = '#785638';
+        const stone = '#9da3a8';
+        const coral = '#d26b42';
+        const cream = '#f1e7d4';
+        const canopyParts: THREE.BufferGeometry[] = [
+          normalizeAndColor(new THREE.CylinderGeometry(0.32, 0.36, 0.14, 10), stone, 0, 0.07, 0),
+          normalizeAndColor(new THREE.CylinderGeometry(0.045, 0.055, 2.55, 8), mast, 0, 1.32, 0),
+          normalizeAndColor(new THREE.CylinderGeometry(0.07, 0.04, 0.12, 8), mast, 0, 2.72, 0),
+        ];
+        // 8 scalloped wedge panels alternating terracotta coral and cream linen
+        for (let seg = 0; seg < 8; seg++) {
+          const panel = new THREE.ConeGeometry(1.75, 0.62, 3, 1, false, (seg / 8) * Math.PI * 2, Math.PI * 2 / 8);
+          canopyParts.push(
+            normalizeAndColor(panel, seg % 2 === 0 ? coral : cream, 0, 2.42, 0),
+          );
+        }
+        geo = registry.track(mergeClusterParts(canopyParts), scope);
+        mat = mats.getStandardMaterial(
+          'prop:umbrella',
+          { color: '#ffffff', vertexColors: true, roughness: 0.78, metalness: 0.04 },
+          scope,
+        );
+      }
+
       const inst = registry.track(new THREE.InstancedMesh(geo, mat, count), scope);
       inst.castShadow = true;
+      inst.receiveShadow = true;
       for (let i = 0; i < count; i++) {
         const p = cluster.positions[i];
         const s = cluster.kind === 'rock' ? 0.8 + ((i * 29) % 40) / 100 : 1;

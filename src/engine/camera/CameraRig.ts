@@ -37,9 +37,10 @@ export class CameraRig {
     this.yaw = yaw + Math.PI;
     const sinY = Math.sin(this.yaw);
     const cosY = Math.cos(this.yaw);
-    const dist = interiorBounds ? 3.4 : this.distance;
-    const horiz = interiorBounds ? Math.cos(this.pitch) * dist : dist;
-    const vert = interiorBounds ? Math.sin(this.pitch) * dist + 1.55 : 3.2;
+    const dist = interiorBounds ? 2.4 : this.distance;
+    const effectivePitch = interiorBounds ? clamp(this.pitch, -0.05, 0.22) : this.pitch;
+    const horiz = interiorBounds ? Math.cos(effectivePitch) * dist : dist;
+    const vert = interiorBounds ? 1.9 + Math.sin(effectivePitch) * 0.9 : 3.2;
 
     this.currentPos.set(
       target.x + sinY * horiz,
@@ -48,8 +49,14 @@ export class CameraRig {
     );
     if (interiorBounds) {
       this.clampToInterior(this.currentPos, interiorBounds);
+      this.currentLook.set(
+        target.x - sinY * 2.4,
+        target.y + 1.45,
+        target.z - cosY * 2.4,
+      );
+    } else {
+      this.currentLook.set(target.x, target.y + 1.4, target.z);
     }
-    this.currentLook.set(target.x, target.y + 1.4, target.z);
   }
 
   private clampToInterior(pos: THREE.Vector3, bounds: InteriorCameraBounds): void {
@@ -123,8 +130,8 @@ export class CameraRig {
       return;
     }
 
-    let targetDist = isInterior ? 3.4 : isDriving ? Math.max(7.6, this.distance + 1.8) : this.distance;
-    if (this.mode === 'shoulder') targetDist = isInterior ? 2.6 : 3.2;
+    let targetDist = isInterior ? 2.45 : isDriving ? Math.max(7.6, this.distance + 1.8) : this.distance;
+    if (this.mode === 'shoulder') targetDist = isInterior ? 1.95 : 3.2;
 
     if (isDriving) {
       // Gently align behind vehicle when moving
@@ -133,10 +140,21 @@ export class CameraRig {
       this.yaw += diff * (1 - Math.exp(-1.5 * dt));
     }
 
-    const horiz = Math.cos(this.pitch) * targetDist;
-    const vert = Math.sin(this.pitch) * targetDist + (isDriving ? 2.1 : isInterior ? 1.55 : 1.75);
+    const effectivePitch = isInterior ? clamp(this.pitch, -0.05, 0.22) : this.pitch;
+    const horiz = Math.cos(effectivePitch) * targetDist;
+    const vert = isInterior
+      ? 1.9 + Math.sin(effectivePitch) * 0.9
+      : Math.sin(effectivePitch) * targetDist + (isDriving ? 2.1 : 1.75);
 
-    _desiredLook.set(playerPos.x, playerPos.y + (isDriving ? 1.3 : 1.45), playerPos.z);
+    if (isInterior) {
+      _desiredLook.set(
+        playerPos.x - Math.sin(this.yaw) * 2.4,
+        playerPos.y + 1.45,
+        playerPos.z - Math.cos(this.yaw) * 2.4,
+      );
+    } else {
+      _desiredLook.set(playerPos.x, playerPos.y + (isDriving ? 1.3 : 1.45), playerPos.z);
+    }
     _desiredPos.set(
       playerPos.x + Math.sin(this.yaw) * horiz,
       Math.max(0.8, playerPos.y + vert),

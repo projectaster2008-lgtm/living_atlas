@@ -22,6 +22,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Enter' || e.code === 'Space') {
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag === 'BUTTON' || activeTag === 'INPUT') return;
         e.preventDefault();
         if (latestSave) {
           onContinueSave(latestSave);
@@ -54,122 +56,131 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   return (
     <div
       data-testid="title-screen"
-      className="fixed inset-0 z-20 flex flex-col justify-between px-6 py-8 md:px-12 md:py-10 pointer-events-none"
+      className="fixed inset-0 z-20 flex flex-col justify-between px-6 py-7 md:px-14 md:py-11 pointer-events-none"
       style={{
         background:
-          'linear-gradient(180deg, rgba(10,16,26,0.68) 0%, rgba(10,16,26,0.12) 45%, rgba(10,16,26,0.72) 100%)',
+          'linear-gradient(95deg, rgba(9,14,22,0.78) 0%, rgba(9,14,22,0.42) 38%, rgba(9,14,22,0.06) 72%, rgba(9,14,22,0.18) 100%), linear-gradient(180deg, rgba(9,14,22,0.22) 0%, rgba(9,14,22,0) 35%, rgba(9,14,22,0.68) 100%)',
       }}
     >
-      {/* Upper calm negative-space emblem & typography */}
-      <div
-        className="flex flex-col items-center text-center mt-1 md:mt-4 px-6 py-4 rounded-2xl pointer-events-auto"
-        style={{
-          background: 'radial-gradient(ellipse at center, rgba(10,16,26,0.52) 0%, rgba(10,16,26,0) 75%)',
-        }}
-      >
-        <div className="flex items-center gap-3 mb-3">
+      {/* Top quiet cartographic header line */}
+      <header className="flex items-center justify-between text-xs text-[#cbd5e1]/85 hud-text-shadow">
+        <div className="flex items-center gap-3">
           <svg
-            width="44"
-            height="44"
+            width="28"
+            height="28"
             viewBox="0 0 64 64"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
-            <circle cx="32" cy="32" r="28" stroke="#e0a952" strokeWidth="1.75" strokeOpacity="0.85" />
-            <circle cx="32" cy="32" r="21" stroke="#4db6ac" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.6" />
-            <path d="M32 8L36.5 27.5L56 32L36.5 36.5L32 56L27.5 36.5L8 32L27.5 27.5L32 8Z" fill="#e0a952" fillOpacity="0.92" />
-            <circle cx="32" cy="32" r="4" fill="#0c121b" stroke="#f3efe6" strokeWidth="1.5" />
+            <circle cx="32" cy="32" r="27" stroke="#d9a14a" strokeWidth="1.75" strokeOpacity="0.88" />
+            <circle cx="32" cy="32" r="19" stroke="#58b4aa" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.65" />
+            <path d="M32 10L36 28L54 32L36 36L32 54L28 36L10 32L28 28L32 10Z" fill="#d9a14a" fillOpacity="0.92" />
+            <circle cx="32" cy="32" r="3.5" fill="#090e16" stroke="#f3ede0" strokeWidth="1.5" />
           </svg>
+          <span className="font-atlas-mono tracking-wider text-[11px] text-[#d9a14a]">
+            36°42&apos;N · 121°54&apos;W
+          </span>
         </div>
+        <span className="hidden sm:inline font-atlas-mono text-[11px] text-[#cbd5e1]/75">
+          Four Interconnected Districts · Local Field Archive
+        </span>
+      </header>
 
-        <p className="text-[11px] uppercase tracking-[0.38em] text-amber-200/80 font-medium hud-text-shadow mb-2">
-          Autonomous 3D Open-World Sandbox
-        </p>
-        <h1 className="text-4xl md:text-6xl font-semibold tracking-[0.06em] text-[#f7f2e8] hud-text-shadow">
-          LIVING ATLAS
-        </h1>
-        <p className="mt-2.5 max-w-lg text-sm md:text-base text-slate-200/90 hud-text-shadow">
-          Four interconnected districts alive with daily schedules, dynamic weather, coastal roads, and persistent stories.
-        </p>
+      {/* Bottom-left editorial lockup keeping central bay & lighthouse vista unobstructed */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <section className="max-w-xl pointer-events-auto">
+          <div className="flex items-center gap-3 mb-2.5">
+            <span className="h-px w-8 bg-[#d9a14a]/80" aria-hidden="true" />
+            <span className="text-xs tracking-[0.18em] uppercase text-[#58b4aa] font-medium hud-text-shadow">
+              Coastal Exploration &amp; Living World
+            </span>
+          </div>
 
-        {/* Primary Action Cluster */}
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-          {latestSave ? (
-            <>
+          <h1 className="font-atlas-display text-4xl sm:text-5xl md:text-6xl font-normal tracking-tight text-[#f3ede0] hud-text-shadow text-balance leading-[1.05]">
+            Living Atlas
+          </h1>
+
+          <p className="mt-3 max-w-md text-sm md:text-[15px] leading-relaxed text-[#e2e8f0]/90 hud-text-shadow">
+            Step into four autonomous regions shaped by tidal promenades, daily civic routines, shifting weather, and quiet human stories.
+          </p>
+
+          {/* Primary Actions */}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            {latestSave ? (
+              <>
+                <button
+                  type="button"
+                  data-start="true"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onContinueSave(latestSave);
+                  }}
+                  className="atlas-btn-primary inline-flex items-center gap-2.5 px-6 py-3 rounded-[var(--atlas-radius-md)] font-semibold text-sm cursor-pointer shadow-lg whitespace-nowrap shrink-0"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>
+                    Continue ({getRegionManifest(latestSave.currentRegionId).name} · Day {latestSave.dayCount})
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onStartNew();
+                  }}
+                  className="atlas-btn-secondary inline-flex items-center gap-2 px-4 py-3 rounded-[var(--atlas-radius-md)] font-medium text-sm cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <RotateCcw className="w-4 h-4 text-[#d9a14a]" />
+                  <span>New Atlas</span>
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
                 data-start="true"
                 onClick={(e) => {
                   e.currentTarget.blur();
-                  onContinueSave(latestSave);
-                }}
-                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-lg bg-[#e0a952] hover:bg-[#eab96b] text-[#0c121b] font-semibold text-sm tracking-wide shadow-lg cursor-pointer transition-colors"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>
-                  Continue ({getRegionManifest(latestSave.currentRegionId).name} · Day {latestSave.dayCount})
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.currentTarget.blur();
                   onStartNew();
                 }}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-[#0d131d]/90 hover:bg-[#172131] text-[#f3efe6] border border-amber-200/25 font-medium text-sm cursor-pointer transition-colors"
+                className="atlas-btn-primary inline-flex items-center gap-2.5 px-6 py-3 rounded-[var(--atlas-radius-md)] font-semibold text-sm cursor-pointer shadow-lg whitespace-nowrap shrink-0"
               >
-                <RotateCcw className="w-4 h-4 text-amber-300" />
-                <span>New Atlas</span>
+                <Play className="w-4 h-4 fill-current" />
+                <span>Enter World</span>
               </button>
-            </>
-          ) : (
+            )}
+
             <button
               type="button"
-              data-start="true"
               onClick={(e) => {
                 e.currentTarget.blur();
-                onStartNew();
+                fileInputRef.current?.click();
               }}
-              className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-lg bg-[#e0a952] hover:bg-[#eab96b] text-[#0c121b] font-semibold text-sm tracking-wide shadow-lg cursor-pointer transition-colors"
+              className="atlas-btn-secondary inline-flex items-center gap-2 px-4 py-3 rounded-[var(--atlas-radius-md)] text-sm text-[#cbd5e1] cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Enter World</span>
+              <Upload className="w-4 h-4 text-[#58b4aa]" />
+              <span>Import Save JSON</span>
             </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+          </div>
+
+          {importError && (
+            <p className="mt-3 px-3.5 py-2 rounded-[var(--atlas-radius-sm)] bg-[#3a161a]/95 border border-[#d96b6b]/50 text-[#f8d7da] text-xs">
+              {importError}
+            </p>
           )}
+        </section>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              fileInputRef.current?.click();
-            }}
-            className="inline-flex items-center gap-2 px-4 py-3 rounded-lg bg-[#0d131d]/85 hover:bg-[#172131] text-slate-200 border border-slate-400/25 text-sm cursor-pointer transition-colors"
-          >
-            <Upload className="w-4 h-4 text-teal-300" />
-            <span>Import Save JSON</span>
-          </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-        </div>
-
-        {importError && (
-          <p className="mt-3 px-3.5 py-1.5 rounded bg-red-950/90 border border-red-400/40 text-red-200 text-xs">
-            {importError}
-          </p>
-        )}
-      </div>
-
-      {/* Single flat bottom control-hint strip */}
-      <div className="flex justify-center">
-        <p className="px-4 py-2 rounded-lg bg-[#0d131d]/85 border border-amber-200/15 text-xs md:text-[13px] text-slate-200/90 tracking-wide">
-          WASD Move · Mouse Drag / Q / C Look · E Interact · J Map &amp; Journal · O Photo Mode · Esc Pause
+        {/* Quiet unboxed keyboard instruction line */}
+        <p className="text-xs text-[#cbd5e1]/85 hud-text-shadow tracking-wide md:text-right">
+          WASD Move · Mouse Drag or Q/C Look · E Interact · J Atlas Map · O Camera · Esc Menu
         </p>
       </div>
     </div>

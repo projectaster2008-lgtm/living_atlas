@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import * as THREE from 'three';
 import { resolveAllowedHosts } from '../../src/shared/config/allowedHosts';
+import { buildArchitecturalBuilding } from '../../src/engine/builders/ArchitectureBuilder';
 import { buildInstancedPropClusters } from '../../src/engine/builders/CompositeBuilders';
 import { CameraRig } from '../../src/engine/camera/CameraRig';
 import { DiagnosticsTracker } from '../../src/engine/core/Diagnostics';
@@ -503,6 +504,52 @@ test('ResourceRegistry and buildInstancedPropClusters track and dispose Instance
   assert.equal(geoDisposeCalls, 1);
   assert.equal(matDisposeCalls, 1);
 });
+
+test('ArchitectureBuilder merges multi-bay building facades within draw-call budget and disposes cleanly', () => {
+  const registry = new ResourceRegistry();
+  const dummyTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  registry.track(dummyTex, 'global');
+  const stubMat = new THREE.MeshStandardMaterial({ color: '#cccccc' });
+  const stubMats = {
+    getStandardMaterial: (_k: string, _p: THREE.MeshStandardMaterialParameters, scope: string) =>
+      registry.track(stubMat, scope),
+    getStuccoAlbedoTexture: () => dummyTex,
+    getRoofTileAlbedoTexture: () => dummyTex,
+    getTimberAlbedoTexture: () => dummyTex,
+    getGrainBumpTexture: () => dummyTex,
+  } as unknown as MaterialLibrary;
+
+  const solara = getRegionManifest('solara-bay');
+  const building = buildArchitecturalBuilding(solara.buildings[0], stubMats, registry, 'region:arch-test');
+
+  let meshCount = 0;
+  let geoCount = 0;
+  const uniqueGeos = new Set<THREE.BufferGeometry>();
+  const disposeCounts: number[] = [];
+  building.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) {
+      meshCount++;
+      const g = (obj as THREE.Mesh).geometry;
+      if (!uniqueGeos.has(g)) {
+        uniqueGeos.add(g);
+        const idx = geoCount++;
+        disposeCounts.push(0);
+        g.addEventListener('dispose', () => {
+          disposeCounts[idx]++;
+        });
+      }
+    }
+  });
+
+  // Compact merged draw-call count despite multi-bay windows, shutters, pilasters, roof, and awning
+  assert.ok(meshCount >= 5 && meshCount <= 16, `Expected 5..16 meshes for merged facade, got ${meshCount}`);
+  assert.ok(geoCount >= 5);
+
+  registry.disposeScope('region:arch-test');
+  assert.ok(disposeCounts.every((c) => c === 1), 'Every merged building geometry should dispose exactly once');
+  registry.disposeScope('global');
+});
+
 
 
 

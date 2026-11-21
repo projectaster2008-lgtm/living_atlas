@@ -44,7 +44,7 @@ export class EngineContext {
 
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 0.90;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.applyQuality(this.activeQuality);
 
@@ -113,6 +113,9 @@ export class EngineContext {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    if (!this.contextLost && this.scene.children.length > 0) {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   startLoop(onTick: (rawDtSec: number) => void): void {

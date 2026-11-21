@@ -678,9 +678,18 @@ export class GameRuntime {
       interiorCamBounds,
     );
 
+    const atmosphereFocus =
+      this.cameraRig.mode === 'observer'
+        ? {
+            x: this.cameraRig.observerPos.x,
+            y: 0,
+            z: this.cameraRig.observerPos.z,
+          }
+        : this.playerCtrl.state.position;
+
     this.atmosphere.update(
       rawDt,
-      this.playerCtrl.state.position,
+      atmosphereFocus,
       sun,
       atm,
       manifest,
@@ -731,8 +740,10 @@ export class GameRuntime {
 
   private animateSceneProps(dt: number): void {
     if (!this.regionBuilt) return;
+    const bobPhase = performance.now() * 0.0014;
     for (const part of this.regionBuilt.animatedParts) {
       if (part.axis === 'y') part.object.rotation.y += part.speed * dt;
+      else if (part.axis === 'bob') part.object.rotation.z = Math.sin(bobPhase + part.speed) * 0.032;
       else part.object.rotation.z += part.speed * dt;
     }
     for (const [sigId, mat] of this.regionBuilt.signalLights.entries()) {

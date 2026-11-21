@@ -11,6 +11,8 @@ interface MapJournalModalProps {
   onClose: () => void;
 }
 
+const SVG_SIZE = 360;
+
 export const MapJournalModal: React.FC<MapJournalModalProps> = ({
   runtime,
   initialTab = 'map',
@@ -39,32 +41,77 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
   const playerYaw = runtime.playerCtrl.state.yaw;
 
   const mapRadius = manifest.boundsRadius + 15;
+  const pxPerMeter = SVG_SIZE / (mapRadius * 2);
   const project = (x: number, z: number) => {
-    const nx = ((x + mapRadius) / (mapRadius * 2)) * 340;
-    const ny = ((z + mapRadius) / (mapRadius * 2)) * 340;
-    return { cx: Math.max(10, Math.min(330, nx)), cy: Math.max(10, Math.min(330, ny)) };
+    const nx = ((x + mapRadius) / (mapRadius * 2)) * SVG_SIZE;
+    const ny = ((z + mapRadius) / (mapRadius * 2)) * SVG_SIZE;
+    return {
+      cx: Math.max(8, Math.min(SVG_SIZE - 8, nx)),
+      cy: Math.max(8, Math.min(SVG_SIZE - 8, ny)),
+    };
   };
+  const projectRaw = (x: number, z: number) => ({
+    cx: ((x + mapRadius) / (mapRadius * 2)) * SVG_SIZE,
+    cy: ((z + mapRadius) / (mapRadius * 2)) * SVG_SIZE,
+  });
+
   const pProj = project(playerPos.x, playerPos.z);
+  const scale50Px = Math.round(50 * pxPerMeter);
+
+  // Build shoreline polygon in SVG coords when hasCoastalOcean is true
+  const oceanPath = manifest.hasCoastalOcean
+    ? (() => {
+        const pts: string[] = ['0,0', `${SVG_SIZE},0`];
+        for (let x = mapRadius; x >= -mapRadius; x -= 8) {
+          // Coastline drops north of z ~ -44, with central Solara Point headland extending to z = -74 around x=0
+          const headland = 26 * Math.exp(-(x * x) / (13 * 13));
+          const coveWave = Math.sin(x * 0.06) * 4;
+          const coastZ = -45 - headland + coveWave;
+          const pt = projectRaw(x, coastZ);
+          pts.push(`${pt.cx.toFixed(1)},${pt.cy.toFixed(1)}`);
+        }
+        return `M ${pts.join(' L ')} Z`;
+      })()
+    : null;
+
+  const coastlineStroke = manifest.hasCoastalOcean
+    ? (() => {
+        const pts: string[] = [];
+        for (let x = -mapRadius; x <= mapRadius; x += 6) {
+          const headland = 26 * Math.exp(-(x * x) / (13 * 13));
+          const coveWave = Math.sin(x * 0.06) * 4;
+          const coastZ = -45 - headland + coveWave;
+          const pt = projectRaw(x, coastZ);
+          pts.push(`${pt.cx.toFixed(1)},${pt.cy.toFixed(1)}`);
+        }
+        return `M ${pts.join(' L ')}`;
+      })()
+    : null;
 
   return (
     <div
       data-testid="map-journal-modal"
-      className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-[#070b11]/80"
+      className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-5 bg-[var(--atlas-scrim)]"
     >
-      <div className="w-full max-w-4xl max-h-[88vh] flex flex-col rounded-2xl bg-[#0d131d]/98 border border-amber-200/25 shadow-2xl overflow-hidden">
-        {/* Header & Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-700/60">
-          <div className="flex items-center gap-2.5">
-            <Compass className="w-5 h-5 text-amber-300" />
-            <div>
-              <h2 className="text-base font-semibold text-[#f7f2e8]">Atlas Map &amp; Field Journal</h2>
-              <p className="text-xs text-slate-400">
-                Active Region: {manifest.name} · {manifest.subtitle}
-              </p>
+      <div className="atlas-modal w-full max-w-5xl max-h-[90vh] flex flex-col rounded-[var(--atlas-radius-lg)] overflow-hidden">
+        {/* Editorial Folio Header */}
+        <header className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b atlas-divider bg-[#0a1019]">
+          <div className="flex items-center gap-3 min-w-0">
+            <Compass className="w-5 h-5 text-[#d9a14a] shrink-0" aria-hidden="true" />
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2.5 flex-wrap">
+                <h2 className="font-atlas-display text-lg font-semibold text-[#f3ede0] leading-tight">
+                  Field Atlas &amp; Journal
+                </h2>
+                <span className="font-atlas-mono text-[11px] text-[#58b4aa] tracking-wider uppercase">
+                  {manifest.name}
+                </span>
+              </div>
+              <p className="text-xs text-[#8fa0b3] truncate">{manifest.subtitle}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {(
               [
                 { id: 'map', label: 'Map & Gateway', icon: MapPin },
@@ -74,18 +121,20 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
               ] as const
             ).map((item) => {
               const Icon = item.icon;
+              const active = tab === item.id;
               return (
                 <button
                   key={item.id}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => setTab(item.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                    tab === item.id
-                      ? 'bg-[#e0a952] text-[#0c121b] font-semibold'
-                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--atlas-radius-md)] text-xs cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
+                    active
+                      ? 'bg-[#d9a14a] text-[#090e16] font-semibold'
+                      : 'bg-[#131e2d] text-[#cbd5e1] hover:bg-[#19283c]'
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>{item.label}</span>
                 </button>
               );
@@ -94,121 +143,301 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="ml-2 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
+              className="ml-1.5 p-1.5 rounded-[var(--atlas-radius-md)] atlas-btn-secondary cursor-pointer"
               aria-label="Close Map & Journal"
+              title="Close [Esc]"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto atlas-scroll p-5">
+        {/* Scrollable Folio Content */}
+        <div className="flex-1 overflow-y-auto atlas-scroll p-5 md:p-6">
           {tab === 'map' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* Top-Down Vector Radar Map */}
-              <div className="lg:col-span-5 flex flex-col items-center bg-[#090e16] rounded-xl border border-slate-700/50 p-4">
-                <svg viewBox="0 0 340 340" className="w-full max-w-[320px] aspect-square rounded-lg bg-[#0d1521]">
-                  {/* Grid lines */}
-                  <line x1="170" y1="0" x2="170" y2="340" stroke="#1e293b" strokeWidth="1" />
-                  <line x1="0" y1="170" x2="340" y2="170" stroke="#1e293b" strokeWidth="1" />
-                  <circle cx="170" cy="170" r="110" fill="none" stroke="#1e293b" strokeDasharray="4 4" />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Cartographic Map Plate */}
+              <div className="lg:col-span-5 flex flex-col gap-3">
+                <div className="flex items-center justify-between text-[11px] font-atlas-mono text-[#8fa0b3]">
+                  <span className="uppercase tracking-[0.16em]">Survey Plate · 1:{Math.round(mapRadius * 20)}</span>
+                  <span>
+                    X {Math.round(playerPos.x)} · Z {Math.round(playerPos.z)}
+                  </span>
+                </div>
 
-                  {/* Traffic roads */}
-                  {manifest.trafficNodes.map((n) => {
-                    const a = project(n.position.x, n.position.z);
-                    return n.nextIds.map((nid) => {
-                      const next = manifest.trafficNodes.find((x) => x.id === nid);
-                      if (!next) return null;
-                      const b = project(next.position.x, next.position.z);
+                <div className="relative rounded-[var(--atlas-radius-md)] border border-[var(--atlas-hairline-strong)] bg-[#0b1522] p-2">
+                  <svg
+                    viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
+                    className="w-full aspect-square rounded-[var(--atlas-radius-sm)] bg-[#101c2b]"
+                    role="img"
+                    aria-label={`Cartographic map of ${manifest.name}`}
+                  >
+                    <defs>
+                      <linearGradient id="atlas-sea-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#0f2c40" />
+                        <stop offset="100%" stopColor="#19465e" />
+                      </linearGradient>
+                    </defs>
+
+                    {/* Land Tint */}
+                    <rect x="0" y="0" width={SVG_SIZE} height={SVG_SIZE} fill="#141e2b" />
+
+                    {/* Coastal Ocean & Bathymetry */}
+                    {oceanPath && <path d={oceanPath} fill="url(#atlas-sea-grad)" />}
+                    {coastlineStroke && (
+                      <>
+                        <path d={coastlineStroke} fill="none" stroke="#58b4aa" strokeWidth="5" opacity="0.18" />
+                        <path d={coastlineStroke} fill="none" stroke="#6ec8be" strokeWidth="1.4" opacity="0.82" />
+                      </>
+                    )}
+
+                    {/* Alpine Lake */}
+                    {manifest.hasAlpineLake && (() => {
+                      const lk = projectRaw(34, -48);
+                      const r = 24 * pxPerMeter;
                       return (
-                        <line
-                          key={`${n.id}-${nid}`}
-                          x1={a.cx}
-                          y1={a.cy}
-                          x2={b.cx}
-                          y2={b.cy}
-                          stroke="#334155"
-                          strokeWidth="4"
-                          strokeLinecap="round"
+                        <g>
+                          <circle cx={lk.cx} cy={lk.cy} r={r} fill="#164258" stroke="#58b4aa" strokeWidth="1.2" />
+                        </g>
+                      );
+                    })()}
+
+                    {/* Cartographic Graticule Grid */}
+                    {[60, 120, 180, 240, 300].map((pos) => (
+                      <g key={pos}>
+                        <line x1={pos} y1="0" x2={pos} y2={SVG_SIZE} stroke="#233349" strokeWidth="0.7" opacity="0.7" />
+                        <line x1="0" y1={pos} x2={SVG_SIZE} y2={pos} stroke="#233349" strokeWidth="0.7" opacity="0.7" />
+                      </g>
+                    ))}
+                    <circle
+                      cx={SVG_SIZE / 2}
+                      cy={SVG_SIZE / 2}
+                      r={manifest.boundsRadius * pxPerMeter}
+                      fill="none"
+                      stroke="#344861"
+                      strokeDasharray="3 4"
+                      strokeWidth="0.9"
+                    />
+
+                    {/* Central Plaza Disk */}
+                    {(() => {
+                      const c = projectRaw(0, 0);
+                      const pr = 16 * pxPerMeter;
+                      return (
+                        <circle
+                          cx={c.cx}
+                          cy={c.cy}
+                          r={pr}
+                          fill="#202d3f"
+                          stroke="#d9a14a"
+                          strokeOpacity="0.35"
+                          strokeWidth="1"
                         />
                       );
-                    });
-                  })}
+                    })()}
 
-                  {/* Buildings */}
-                  {manifest.buildings.map((b) => {
-                    const pt = project(b.position.x, b.position.z);
-                    const w = Math.max(6, (b.size.x / (mapRadius * 2)) * 340);
-                    const h = Math.max(6, (b.size.z / (mapRadius * 2)) * 340);
-                    return (
-                      <rect
-                        key={b.id}
-                        x={pt.cx - w / 2}
-                        y={pt.cy - h / 2}
-                        width={w}
-                        height={h}
-                        rx="2"
-                        fill={b.interiorId ? '#475569' : '#263244'}
-                        stroke={b.interiorId ? '#e0a952' : '#334155'}
-                        strokeWidth="1"
-                      />
-                    );
-                  })}
-
-                  {/* Landmarks */}
-                  {manifest.landmarks.map((lm) => {
-                    const pt = project(lm.position.x, lm.position.z);
-                    const found = runtime.discoveredLandmarks.has(lm.id);
-                    return (
-                      <g key={lm.id}>
-                        <circle
-                          cx={pt.cx}
-                          cy={pt.cy}
-                          r="4.5"
-                          fill={found ? '#4db6ac' : '#64748b'}
-                          stroke="#0c121b"
-                          strokeWidth="1.2"
+                    {/* Solara Marina Pier Footprint */}
+                    {manifest.hasCoastalOcean && (() => {
+                      const pt = projectRaw(28, -58);
+                      const pw = 7 * pxPerMeter;
+                      const ph = 28 * pxPerMeter;
+                      return (
+                        <rect
+                          x={pt.cx - pw / 2}
+                          y={pt.cy - ph / 2}
+                          width={pw}
+                          height={ph}
+                          rx="1"
+                          fill="#7c5d3f"
+                          stroke="#d9a14a"
+                          strokeOpacity="0.55"
+                          strokeWidth="0.8"
                         />
-                      </g>
-                    );
-                  })}
+                      );
+                    })()}
 
-                  {/* NPCs */}
-                  {npcs.map((n) => {
-                    const pt = project(n.position.x, n.position.z);
-                    return <circle key={n.id} cx={pt.cx} cy={pt.cy} r="2.2" fill="#cbd5e1" opacity="0.8" />;
-                  })}
+                    {/* Traffic Carriageway Hierarchy */}
+                    {manifest.trafficNodes.map((n) => {
+                      const a = project(n.position.x, n.position.z);
+                      return n.nextIds.map((nid) => {
+                        const next = manifest.trafficNodes.find((x) => x.id === nid);
+                        if (!next) return null;
+                        const b = project(next.position.x, next.position.z);
+                        return (
+                          <g key={`${n.id}-${nid}`}>
+                            <line
+                              x1={a.cx}
+                              y1={a.cy}
+                              x2={b.cx}
+                              y2={b.cy}
+                              stroke="#233142"
+                              strokeWidth="7.5"
+                              strokeLinecap="round"
+                            />
+                            <line
+                              x1={a.cx}
+                              y1={a.cy}
+                              x2={b.cx}
+                              y2={b.cy}
+                              stroke="#3b4d63"
+                              strokeWidth="4.2"
+                              strokeLinecap="round"
+                            />
+                            <line
+                              x1={a.cx}
+                              y1={a.cy}
+                              x2={b.cx}
+                              y2={b.cy}
+                              stroke="#94a3b8"
+                              strokeOpacity="0.4"
+                              strokeWidth="0.8"
+                              strokeDasharray="3 4"
+                            />
+                          </g>
+                        );
+                      });
+                    })}
 
-                  {/* Player arrow */}
-                  <g transform={`translate(${pProj.cx}, ${pProj.cy}) rotate(${(-playerYaw * 180) / Math.PI})`}>
-                    <polygon points="0,-7 5,6 0,3 -5,6" fill="#e0a952" stroke="#0c121b" strokeWidth="1" />
-                  </g>
-                </svg>
+                    {/* Rotated Building Footprints */}
+                    {manifest.buildings.map((b) => {
+                      const pt = project(b.position.x, b.position.z);
+                      const w = Math.max(6, b.size.x * pxPerMeter);
+                      const h = Math.max(6, b.size.z * pxPerMeter);
+                      const deg = (-b.yaw * 180) / Math.PI;
+                      return (
+                        <g key={b.id} transform={`translate(${pt.cx}, ${pt.cy}) rotate(${deg})`}>
+                          <rect
+                            x={-w / 2}
+                            y={-h / 2}
+                            width={w}
+                            height={h}
+                            rx="1.2"
+                            fill={b.interiorId ? '#3c4c63' : '#253346'}
+                            stroke={b.interiorId ? '#d9a14a' : '#435670'}
+                            strokeWidth={b.interiorId ? '1.15' : '0.8'}
+                          />
+                          <line
+                            x1={-w * 0.36}
+                            y1="0"
+                            x2={w * 0.36}
+                            y2="0"
+                            stroke={b.interiorId ? '#e5b363' : '#64748b'}
+                            strokeOpacity="0.45"
+                            strokeWidth="0.7"
+                          />
+                        </g>
+                      );
+                    })}
 
-                <div className="mt-3 flex flex-wrap justify-center gap-3 text-[11px] text-slate-300">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#e0a952]" /> You
+                    {/* Gateway Portal Marker */}
+                    {(() => {
+                      const gw = project(manifest.gatewayPortalPosition.x, manifest.gatewayPortalPosition.z);
+                      return (
+                        <g transform={`translate(${gw.cx}, ${gw.cy})`}>
+                          <polygon points="0,-5 4.5,0 0,5 -4.5,0" fill="#58b4aa" stroke="#090e16" strokeWidth="1" />
+                        </g>
+                      );
+                    })()}
+
+                    {/* Landmarks with non-overlapping numbered cartographic markers */}
+                    {manifest.landmarks.map((lm, idx) => {
+                      const pt = project(lm.position.x, lm.position.z);
+                      const found = runtime.discoveredLandmarks.has(lm.id);
+                      return (
+                        <g key={lm.id}>
+                          <title>{lm.name}</title>
+                          <circle
+                            cx={pt.cx}
+                            cy={pt.cy}
+                            r="5.5"
+                            fill={found ? '#58b4aa' : '#334155'}
+                            stroke="#090e16"
+                            strokeWidth="1.2"
+                          />
+                          <text
+                            x={pt.cx}
+                            y={pt.cy + 2.3}
+                            textAnchor="middle"
+                            fill={found ? '#090e16' : '#f3ede0'}
+                            fontSize="6.8"
+                            fontWeight="bold"
+                            fontFamily="ui-monospace, monospace"
+                          >
+                            {idx + 1}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Active Residents */}
+                    {npcs.map((n) => {
+                      const pt = project(n.position.x, n.position.z);
+                      return <circle key={n.id} cx={pt.cx} cy={pt.cy} r="2" fill="#f3ede0" opacity="0.78" />;
+                    })}
+
+                    {/* Player Direction Arrow (preserve g[transform] contract) */}
+                    <g transform={`translate(${pProj.cx}, ${pProj.cy}) rotate(${(-playerYaw * 180) / Math.PI})`}>
+                      <circle r="7.5" fill="#d9a14a" fillOpacity="0.18" />
+                      <polygon points="0,-7.5 5,6 0,3 -5,6" fill="#d9a14a" stroke="#090e16" strokeWidth="1.1" />
+                    </g>
+
+                    {/* Cartographic Compass Rose (top-right) */}
+                    <g transform={`translate(${SVG_SIZE - 26}, 26)`}>
+                      <circle r="13" fill="#0b1522" fillOpacity="0.72" stroke="#d9a14a" strokeOpacity="0.38" strokeWidth="0.8" />
+                      <polygon points="0,-10 2.5,-2 0,-4 -2.5,-2" fill="#d9a14a" />
+                      <polygon points="0,10 2,2 0,4 -2,2" fill="#64748b" />
+                      <text
+                        x="0"
+                        y="-14.5"
+                        textAnchor="middle"
+                        fill="#d9a14a"
+                        fontSize="7.5"
+                        fontWeight="bold"
+                        fontFamily="Georgia, serif"
+                      >
+                        N
+                      </text>
+                    </g>
+
+                    {/* Metric Scale Bar (bottom-left) */}
+                    <g transform={`translate(14, ${SVG_SIZE - 16})`}>
+                      <line x1="0" y1="0" x2={scale50Px} y2="0" stroke="#f3ede0" strokeWidth="1.4" />
+                      <line x1="0" y1="-3" x2="0" y2="2" stroke="#f3ede0" strokeWidth="1.2" />
+                      <line x1={scale50Px} y1="-3" x2={scale50Px} y2="2" stroke="#f3ede0" strokeWidth="1.2" />
+                      <text x={scale50Px + 5} y="2" fill="#cbd5e1" fontSize="8" fontFamily="ui-monospace, monospace">
+                        50m
+                      </text>
+                    </g>
+                  </svg>
+                </div>
+
+                {/* Flat Key Legend */}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 text-[11px] text-[#cbd5e1]">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#d9a14a]" /> Explorer
                   </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#4db6ac]" /> Landmark
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#58b4aa]" /> Landmark
                   </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-sm border border-[#e0a952] bg-[#475569]" /> Interior
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-[2px] border border-[#d9a14a] bg-[#3c4c63]" /> Interior
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rotate-45 bg-[#58b4aa]" /> Gateway
                   </span>
                 </div>
               </div>
 
-              {/* World Gateway Quick-Travel Cards */}
-              <div className="lg:col-span-7 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-amber-200 uppercase tracking-wider">
+              {/* World Gateway Transit Ledger */}
+              <div className="lg:col-span-7 flex flex-col">
+                <div className="flex items-baseline justify-between pb-2.5 border-b atlas-divider">
+                  <h3 className="font-atlas-mono text-xs uppercase tracking-[0.16em] text-[#d9a14a] font-semibold">
                     World Gateway Transit
                   </h3>
-                  <span className="text-xs text-slate-400">Select any unlocked district</span>
+                  <span className="text-xs text-[#8fa0b3]">Direct passage to unlocked regions</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="divide-y atlas-divider">
                   {ALL_REGION_IDS.map((id) => {
                     const m = getRegionManifest(id);
                     const unlocked = runtime.unlockedRegions.has(id);
@@ -216,48 +445,50 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
                     return (
                       <div
                         key={id}
-                        className={`rounded-xl p-3.5 border transition-colors ${
-                          isCurrent
-                            ? 'bg-[#162233] border-amber-300/55'
-                            : 'bg-[#111926] border-slate-700/60'
+                        className={`py-3.5 px-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                          isCurrent ? 'border-l-2 border-l-[#d9a14a] bg-[#131e2d]/60' : ''
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="font-semibold text-sm text-[#f7f2e8]">{m.name}</h4>
-                          {isCurrent ? (
-                            <span className="text-[11px] px-2 py-0.5 rounded bg-amber-400/20 text-amber-200 font-medium">
-                              Current
-                            </span>
-                          ) : !unlocked ? (
-                            <Lock className="w-3.5 h-3.5 text-slate-500" />
-                          ) : null}
-                        </div>
-                        <p className="text-[11px] text-teal-300 mt-0.5">{m.subtitle}</p>
-                        <p className="text-xs text-slate-400 mt-1.5 line-clamp-2">{m.description}</p>
-                        <div className="mt-3 flex items-center justify-between">
-                          <span className="text-[11px] text-slate-400">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <h4 className="font-atlas-display text-[15px] font-semibold text-[#f3ede0]">{m.name}</h4>
+                            <span className="text-[11px] text-[#58b4aa]">{m.subtitle}</span>
+                            {isCurrent && (
+                              <span className="font-atlas-mono text-[10px] uppercase tracking-wider text-[#d9a14a]">
+                                · Current Station
+                              </span>
+                            )}
+                            {!unlocked && !isCurrent && (
+                              <span className="inline-flex items-center gap-1 font-atlas-mono text-[10px] text-[#8fa0b3]">
+                                <Lock className="w-3 h-3" aria-hidden="true" /> Locked
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-[#cbd5e1] mt-1 leading-relaxed">{m.description}</p>
+                          <p className="font-atlas-mono text-[11px] text-[#8fa0b3] mt-1">
                             {m.residents.length} Residents · {m.interiors.length} Interiors
-                          </span>
-                          <button
-                            type="button"
-                            data-testid={`travel-${id}`}
-                            disabled={!unlocked || isCurrent}
-                            onClick={() => {
-                              onTravel(id);
-                              onClose();
-                            }}
-                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                              isCurrent
-                                ? 'bg-slate-800 text-slate-500 cursor-default'
-                                : unlocked
-                                  ? 'bg-[#e0a952] hover:bg-[#eab96b] text-[#0c121b]'
-                                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                            }`}
-                          >
-                            <Navigation className="w-3 h-3" />
-                            <span>{isCurrent ? 'Here' : 'Travel'}</span>
-                          </button>
+                          </p>
                         </div>
+
+                        <button
+                          type="button"
+                          data-testid={`travel-${id}`}
+                          disabled={!unlocked || isCurrent}
+                          onClick={() => {
+                            onTravel(id);
+                            onClose();
+                          }}
+                          className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[var(--atlas-radius-md)] text-xs font-semibold shrink-0 whitespace-nowrap ${
+                            isCurrent
+                              ? 'bg-[#131e2d] text-[#8fa0b3] cursor-default'
+                              : unlocked
+                                ? 'atlas-btn-primary cursor-pointer'
+                                : 'bg-[#131e2d]/60 text-[#64748b] cursor-not-allowed'
+                          }`}
+                        >
+                          <Navigation className="w-3.5 h-3.5" aria-hidden="true" />
+                          <span>{isCurrent ? 'Present' : 'Travel'}</span>
+                        </button>
                       </div>
                     );
                   })}
@@ -267,43 +498,37 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
           )}
 
           {tab === 'missions' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className="divide-y atlas-divider">
               {missions.map(({ def, progress }) => {
                 const isActive = progress.status === 'active';
                 const isDone = progress.status === 'completed';
                 const isLocked = progress.status === 'locked';
                 return (
-                  <div
+                  <article
                     key={def.id}
-                    className={`rounded-xl p-4 border ${
-                      isActive
-                        ? 'bg-[#152232] border-amber-300/50'
-                        : 'bg-[#101824] border-slate-700/60'
+                    className={`py-4 px-3 flex flex-col gap-2.5 ${
+                      isActive ? 'border-l-2 border-l-[#d9a14a] bg-[#131e2d]/55' : ''
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-[10px] uppercase tracking-wider text-teal-300 font-semibold">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="flex items-baseline gap-2.5 flex-wrap">
+                        <span className="font-atlas-mono text-[10px] uppercase tracking-[0.14em] text-[#58b4aa]">
                           {getRegionManifest(def.regionId).name}
                         </span>
-                        <h3 className="text-sm font-semibold text-[#f7f2e8]">{def.title}</h3>
+                        <h3 className="font-atlas-display text-base font-semibold text-[#f3ede0]">{def.title}</h3>
                       </div>
                       <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-medium capitalize ${
-                          isDone
-                            ? 'bg-emerald-900/60 text-emerald-200'
-                            : isActive
-                              ? 'bg-amber-400/20 text-amber-200'
-                              : 'bg-slate-800 text-slate-300'
+                        className={`font-atlas-mono text-[11px] uppercase tracking-wider ${
+                          isDone ? 'text-[#58b4aa]' : isActive ? 'text-[#d9a14a]' : 'text-[#8fa0b3]'
                         }`}
                       >
                         {progress.status}
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-300 mt-1.5">{def.summary}</p>
+                    <p className="text-xs text-[#cbd5e1] max-w-prose leading-relaxed">{def.summary}</p>
 
-                    <div className="mt-3 flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1.5 pl-1">
                       {def.objectives.map((obj, idx) => {
                         const completed = progress.completedObjectiveIds.includes(obj.id);
                         const current = isActive && idx === progress.currentObjectiveIndex;
@@ -312,21 +537,23 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
                             key={obj.id}
                             className={`flex items-center gap-2 text-xs ${
                               completed
-                                ? 'text-emerald-300 line-through opacity-80'
+                                ? 'text-[#58b4aa] line-through opacity-75'
                                 : current
-                                  ? 'text-amber-200 font-medium'
-                                  : 'text-slate-400'
+                                  ? 'text-[#e5b363] font-medium'
+                                  : 'text-[#8fa0b3]'
                             }`}
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                             <span>{obj.description}</span>
                           </div>
                         );
                       })}
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-slate-700/50 flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Reward: {def.rewardLabel}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                      <span className="text-[#8fa0b3]">
+                        Reward: <span className="text-[#f3ede0]">{def.rewardLabel}</span>
+                      </span>
                       {!isLocked && !isActive && (!isDone || def.repeatable) && (
                         <button
                           type="button"
@@ -334,20 +561,20 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
                             runtime.missions.setActiveMission(def.id);
                             setVersion((v) => v + 1);
                           }}
-                          className="px-3 py-1 rounded bg-[#e0a952] hover:bg-[#eab96b] text-[#0c121b] font-semibold cursor-pointer"
+                          className="atlas-btn-primary px-3 py-1.5 rounded-[var(--atlas-radius-md)] font-semibold cursor-pointer"
                         >
                           Track Mission
                         </button>
                       )}
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>
           )}
 
           {tab === 'residents' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 divide-y md:divide-y-0">
               {manifest.residents.map((res) => {
                 const rel = runtime.relationships.get(res.id);
                 const tier = runtime.relationships.getTierLabel(res.id);
@@ -355,17 +582,15 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
                 return (
                   <div
                     key={res.id}
-                    className="rounded-xl bg-[#101824] border border-slate-700/60 p-3.5 flex flex-col gap-1.5"
+                    className="py-3.5 border-b atlas-divider flex flex-col gap-1"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-sm font-semibold text-[#f7f2e8]">{res.name}</h4>
-                      <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-amber-200">
-                        {tier}
-                      </span>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h4 className="font-atlas-display text-[15px] font-semibold text-[#f3ede0]">{res.name}</h4>
+                      <span className="font-atlas-mono text-[11px] text-[#d9a14a]">{tier}</span>
                     </div>
-                    <p className="text-xs text-teal-300">{res.occupation}</p>
-                    <p className="text-xs text-slate-400 line-clamp-2">{res.bio}</p>
-                    <div className="mt-1 pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-300 tabular-nums">
+                    <p className="text-xs text-[#58b4aa]">{res.occupation}</p>
+                    <p className="text-xs text-[#cbd5e1] line-clamp-2 leading-relaxed">{res.bio}</p>
+                    <div className="mt-1 flex items-center justify-between font-atlas-mono text-[11px] text-[#8fa0b3]">
                       <span className="capitalize">Activity: {simState?.behavior.replace('_', ' ') ?? 'idle'}</span>
                       <span>Trust {Math.round(rel.trust)}</span>
                     </div>
@@ -376,29 +601,26 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
           )}
 
           {tab === 'photos' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <h3 className="text-sm font-semibold text-amber-200 mb-2.5">
-                  Discovered Landmarks ({runtime.discoveredLandmarks.size})
+                <h3 className="font-atlas-mono text-xs uppercase tracking-[0.16em] text-[#d9a14a] pb-2 border-b atlas-divider mb-2">
+                  Surveyed Landmarks ({runtime.discoveredLandmarks.size})
                 </h3>
-                <div className="flex flex-col gap-2">
+                <div className="divide-y atlas-divider">
                   {manifest.landmarks.map((lm) => {
                     const found = runtime.discoveredLandmarks.has(lm.id);
                     return (
-                      <div
-                        key={lm.id}
-                        className="rounded-lg bg-[#101824] border border-slate-700/50 p-3 flex items-center justify-between"
-                      >
+                      <div key={lm.id} className="py-3 flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-slate-100">{lm.name}</p>
-                          <p className="text-xs text-slate-400">{lm.description}</p>
+                          <p className="font-atlas-display text-sm font-medium text-[#f3ede0]">{lm.name}</p>
+                          <p className="text-xs text-[#8fa0b3] mt-0.5 leading-relaxed">{lm.description}</p>
                         </div>
                         <span
-                          className={`text-[11px] px-2 py-0.5 rounded ${
-                            found ? 'bg-teal-900/70 text-teal-200' : 'bg-slate-800 text-slate-400'
+                          className={`font-atlas-mono text-[11px] shrink-0 ${
+                            found ? 'text-[#58b4aa]' : 'text-[#64748b]'
                           }`}
                         >
-                          {found ? 'Visited' : 'Unvisited'}
+                          {found ? 'Visited' : 'Uncharted'}
                         </span>
                       </div>
                     );
@@ -407,27 +629,25 @@ export const MapJournalModal: React.FC<MapJournalModalProps> = ({
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-amber-200 mb-2.5">
+                <h3 className="font-atlas-mono text-xs uppercase tracking-[0.16em] text-[#d9a14a] pb-2 border-b atlas-divider mb-2">
                   Field Photography Log ({runtime.photos.length})
                 </h3>
                 {runtime.photos.length === 0 ? (
-                  <p className="text-xs text-slate-400 rounded-lg bg-[#101824] border border-slate-700/50 p-4">
-                    Open Observer / Photo Mode with [O] and press [Space] near landmarks to record field photographs.
+                  <p className="text-xs text-[#cbd5e1] leading-relaxed py-3">
+                    Open Observer / Photo Mode with <kbd className="font-atlas-mono text-[#d9a14a]">[O]</kbd> and press{' '}
+                    <kbd className="font-atlas-mono text-[#d9a14a]">[Space]</kbd> near coastal landmarks to record plates in your field log.
                   </p>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="divide-y atlas-divider">
                     {runtime.photos.map((ph) => (
-                      <div
-                        key={ph.id}
-                        className="rounded-lg bg-[#101824] border border-slate-700/50 p-3 flex items-center justify-between text-xs"
-                      >
+                      <div key={ph.id} className="py-3 flex items-center justify-between gap-3 text-xs">
                         <div>
-                          <p className="font-semibold text-slate-100">{ph.landmarkName}</p>
-                          <p className="text-slate-400">
-                            {getRegionManifest(ph.regionId).name} · Weather: {ph.weather}
+                          <p className="font-atlas-display text-sm font-semibold text-[#f3ede0]">{ph.landmarkName}</p>
+                          <p className="text-[#8fa0b3] mt-0.5">
+                            {getRegionManifest(ph.regionId).name} · Weather: <span className="capitalize">{ph.weather}</span>
                           </p>
                         </div>
-                        <Camera className="w-4 h-4 text-amber-300" />
+                        <Camera className="w-4 h-4 text-[#d9a14a] shrink-0" aria-hidden="true" />
                       </div>
                     ))}
                   </div>
