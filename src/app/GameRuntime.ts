@@ -125,6 +125,7 @@ export class GameRuntime {
   private colliders: ColliderBox[] = [];
 
   private hudEmitTimer = 0;
+  private postLoadDiagFrames = -1;
   private autosaveTimer = 0;
   private notificationBanner: string | null = null;
   private notificationTimer = 0;
@@ -176,8 +177,16 @@ export class GameRuntime {
     this.photos = [];
     this.relationships.load({});
     this.dialogueEngine.load({}, {});
+    this.missions.reset();
     for (const id of ALL_REGION_IDS) {
       const m = getRegionManifest(id);
+      this.weather.registerRegion(id, m.weatherWeights, {
+        current: 'clear',
+        next: 'clear',
+        progress: 1,
+        durationSec: 220,
+      });
+      this.npcSim.registerRegion(m, this.clock.totalSeconds);
       this.vehicles.registerRegion(m);
     }
     this.playerCtrl.state.mode = 'foot';
@@ -210,6 +219,10 @@ export class GameRuntime {
       }
     }
 
+    if (this.activeDialogue) {
+      this.activeDialogue = null;
+      this.callbacks.onDialogueChange(null);
+    }
     this.playerCtrl.state.exteriorReturnPosition = { ...save.exteriorReturnPosition };
     this.playerCtrl.state.exteriorReturnYaw = save.exteriorReturnYaw;
     this.loadRegion(save.currentRegionId, false, {
@@ -271,19 +284,35 @@ export class GameRuntime {
       vehicleId: string | null;
     },
   ): void {
-    const prevScope = `region:${this.currentRegionId}`;
+    const prevRegionId = this.currentRegionId;
+    const prevScope = `region:${prevRegionId}`;
     this.unloadCurrentScene(prevScope);
+
+    if (!isBoot) {
+      this.npcSim.deactivateRegion(prevRegionId, this.clock.totalSeconds);
+    }
 
     this.currentRegionId = regionId;
     const manifest = getRegionManifest(regionId);
     const scope = `region:${regionId}`;
 
-    this.npcSim.deactivateRegion(this.currentRegionId, this.clock.totalSeconds);
     const atm = this.weather.getAtmosphere(regionId);
     this.npcSim.activateRegion(regionId, this.clock.totalSeconds, this.clock.getHourOfDay(), atm.activeWeather);
     this.traffic.loadRegion(manifest, this.engine.activeQuality === 'low' ? 4 : 8);
     this.playerCtrl.configureRegion(manifest);
     this.colliders = buildBuildingColliders(manifest.buildings);
+
+    if (this.playerCtrl.state.activeVehicleId) {
+      const prevVeh = this.vehicles.getVehicleById(this.playerCtrl.state.activeVehicleId);
+      if (prevVeh) {
+        prevVeh.occupiedByPlayer = false;
+        prevVeh.speed = 0;
+      }
+    }
+    this.playerCtrl.state.mode = 'foot';
+    this.playerCtrl.state.activeVehicleId = null;
+    this.activeInteriorId = null;
+    this.cameraRig.mode = 'third-person';
 
     this.playerCtrl.state.regionId = regionId;
     this.playerCtrl.state.interiorId = null;
@@ -298,6 +327,7 @@ export class GameRuntime {
       if (veh && veh.regionId === regionId) {
         this.playerCtrl.state.mode = 'vehicle';
         this.playerCtrl.state.activeVehicleId = veh.id;
+        this.cameraRig.mode = 'vehicle';
         veh.occupiedByPlayer = true;
       }
     }
@@ -359,6 +389,7 @@ export class GameRuntime {
     if (!isBoot) {
       this.engine.prewarmShaders();
     }
+    this.postLoadDiagFrames = 2;
     this.events.emit('region:changed', { regionId });
   }
 
@@ -400,8 +431,10 @@ export class GameRuntime {
 
     this.activeInteriorId = interiorId;
     this.playerCtrl.state.interiorId = interiorId;
-    this.playerCtrl.state.position = { ...interior.spawnLocal };
-    this.playerCtrl.state.yaw = Math.PI;
+    if (!silent) {
+      this.playerCtrl.state.position = { ...interior.spawnLocal };
+      this.playerCtrl.state.yaw = Math.PI;
+    }
 
     if (this.regionBuilt) this.regionBuilt.group.visible = false;
     for (const vRig of this.vehicleRigs.values()) vRig.root.visible = false;
@@ -409,7 +442,11 @@ export class GameRuntime {
 
     this.interiorGroup = buildInteriorScene(interior, this.mats, this.registry, 'interior');
     this.engine.scene.add(this.interiorGroup);
-    this.cameraRig.snapToTarget(this.playerCtrl.state.position, this.playerCtrl.state.yaw);
+    this.cameraRig.snapToTarget(this.playerCtrl.state.position, this.playerCtrl.state.yaw, {
+      halfW: interior.roomSize.x * 0.5,
+      height: interior.roomSize.y,
+      halfD: interior.roomSize.z * 0.5,
+    });
 
     const completion = this.missions.notifyAction('enter_interior', interiorId, this.currentRegionId);
     this.handleMissionCompletion(completion);
@@ -583,19 +620,9 @@ export class GameRuntime {
     }
 
     // Interaction prompt & [E] trigger
-    const npcs = this.npcSim.getActiveRegionNpcs(this.currentRegionId);
-    this.currentPrompt = this.activeDialogue
-      ? null
-      : resolveInteractionPrompt(
-          this.playerCtrl.state,
-          manifest,
-          activeInterior,
-          npcs,
-          (id) => this.npcSim.getProfile(id),
-          this.vehicles,
-          this.collectedIds,
-        );
+    this.refreshCurrentPrompt();
 
+    let interacted = false;
     if (
       !this.activeDialogue &&
       this.cameraRig.mode !== 'observer' &&
@@ -603,14 +630,29 @@ export class GameRuntime {
       this.currentPrompt
     ) {
       this.executeInteraction(this.currentPrompt);
+      interacted = true;
+      if (this.playerCtrl.state.mode !== 'vehicle') {
+        drivingSpeedKmh = null;
+      }
     }
 
     if (this.cameraRig.mode === 'observer' && this.input.consumeJustPressed('Space')) {
       this.capturePhoto();
     }
 
+    const currentInterior = this.activeInteriorId
+      ? manifest.interiors.find((i) => i.id === this.activeInteriorId) ?? null
+      : null;
+    const interiorCamBounds = currentInterior
+      ? {
+          halfW: currentInterior.roomSize.x * 0.5,
+          height: currentInterior.roomSize.y,
+          halfD: currentInterior.roomSize.z * 0.5,
+        }
+      : null;
+
     // Sync Visual Transforms
-    this.syncVisuals(rawDt, activeInterior !== null);
+    this.syncVisuals(rawDt, currentInterior !== null);
 
     // Update Camera, Atmosphere & Audio
     this.cameraRig.updateGameplay(
@@ -619,10 +661,11 @@ export class GameRuntime {
       this.playerCtrl.state.position,
       this.playerCtrl.state.yaw,
       this.playerCtrl.state.mode === 'vehicle',
-      activeInterior !== null,
+      currentInterior !== null,
       this.input,
       this.settings.mouseSensitivity,
       this.colliders,
+      interiorCamBounds,
     );
 
     this.atmosphere.update(
@@ -632,7 +675,7 @@ export class GameRuntime {
       atm,
       manifest,
       this.engine.activeQuality,
-      activeInterior !== null,
+      currentInterior !== null,
     );
     this.audio.updateAtmosphere(this.currentRegionId, atm.activeWeather, drivingSpeedKmh);
 
@@ -659,7 +702,15 @@ export class GameRuntime {
 
     const promptKey = this.currentPrompt ? `${this.currentPrompt.kind}:${this.currentPrompt.targetId}` : '';
     this.hudEmitTimer += rawDt;
-    if (this.hudEmitTimer >= 0.14 || promptKey !== this.lastPromptKey) {
+    let forceDiagEmit = false;
+    if (this.postLoadDiagFrames > 0) {
+      this.postLoadDiagFrames--;
+      if (this.postLoadDiagFrames === 0) {
+        forceDiagEmit = true;
+        this.postLoadDiagFrames = -1;
+      }
+    }
+    if (this.hudEmitTimer >= 0.14 || promptKey !== this.lastPromptKey || forceDiagEmit || interacted) {
       this.lastPromptKey = promptKey;
       this.hudEmitTimer = 0;
       this.emitHud(drivingSpeedKmh);
@@ -700,17 +751,24 @@ export class GameRuntime {
 
     // NPCs
     const npcs = this.npcSim.getActiveRegionNpcs(this.currentRegionId);
+    const activeInteriorDef = isInterior
+      ? getRegionManifest(this.currentRegionId).interiors.find((i) => i.id === this.activeInteriorId) ?? null
+      : null;
+    const interiorNpcIds = activeInteriorDef
+      ? npcs.filter((n) => n.targetLocationId === activeInteriorDef.entryBuildingId).map((n) => n.id)
+      : [];
+
     for (const npc of npcs) {
       const rig = this.npcRigs.get(npc.id);
       if (!rig) continue;
 
       if (isInterior) {
-        const manifest = getRegionManifest(this.currentRegionId);
-        const intDef = manifest.interiors.find((i) => i.id === this.activeInteriorId);
-        const insideThis = intDef && npc.targetLocationId === intDef.entryBuildingId;
-        rig.root.visible = Boolean(insideThis);
+        const insideIdx = interiorNpcIds.indexOf(npc.id);
+        const insideThis = insideIdx >= 0;
+        rig.root.visible = insideThis;
         if (insideThis) {
-          rig.root.position.set(0, 0, -2.6);
+          const offsetX = (insideIdx - (interiorNpcIds.length - 1) * 0.5) * 2.2;
+          rig.root.position.set(offsetX, 0, -2.6);
           rig.root.rotation.y = 0;
           rig.leftLeg.rotation.x = 0;
           rig.rightLeg.rotation.x = 0;
@@ -770,13 +828,39 @@ export class GameRuntime {
     void dt;
   }
 
+  private refreshCurrentPrompt(): void {
+    if (this.activeDialogue) {
+      this.currentPrompt = null;
+      return;
+    }
+    const manifest = getRegionManifest(this.currentRegionId);
+    const activeInterior = this.activeInteriorId
+      ? manifest.interiors.find((i) => i.id === this.activeInteriorId) ?? null
+      : null;
+    const npcs = this.npcSim.getActiveRegionNpcs(this.currentRegionId);
+    this.currentPrompt = resolveInteractionPrompt(
+      this.playerCtrl.state,
+      manifest,
+      activeInterior,
+      npcs,
+      (id) => this.npcSim.getProfile(id),
+      this.vehicles,
+      this.collectedIds,
+    );
+  }
+
   public executeInteraction(prompt: ActiveInteractionPrompt): void {
     if (prompt.kind === 'npc') {
       this.openDialogue(prompt.targetId);
+      this.refreshCurrentPrompt();
     } else if (prompt.kind === 'door') {
       this.enterInterior(prompt.targetId);
+      this.refreshCurrentPrompt();
+      this.emitHud();
     } else if (prompt.kind === 'exit-interior') {
       this.exitInterior();
+      this.refreshCurrentPrompt();
+      this.emitHud();
     } else if (prompt.kind === 'vehicle') {
       const veh = this.vehicles.getVehicleById(prompt.targetId);
       if (veh) {
@@ -787,6 +871,7 @@ export class GameRuntime {
         this.audio.playChime('interact');
         const completion = this.missions.notifyAction('drive_vehicle', veh.id, this.currentRegionId);
         this.handleMissionCompletion(completion);
+        this.refreshCurrentPrompt();
         this.notify(`Driving ${this.vehicles.getSpec(veh.specId)?.name ?? 'Vehicle'}`);
       }
     } else if (prompt.kind === 'exit-vehicle') {
@@ -804,14 +889,17 @@ export class GameRuntime {
       this.playerCtrl.state.activeVehicleId = null;
       this.cameraRig.mode = 'third-person';
       this.audio.playChime('interact');
+      this.refreshCurrentPrompt();
+      this.emitHud();
     } else if (prompt.kind === 'collectible') {
       this.collectedIds.add(prompt.targetId);
       const mesh = this.regionBuilt?.collectibleMeshes.get(prompt.targetId);
       if (mesh) mesh.visible = false;
       this.audio.playChime('mission');
-      this.notify(`Collected ${prompt.label.replace('Collect ', '')}`);
       const completion = this.missions.notifyAction('collect', prompt.targetId, this.currentRegionId);
       this.handleMissionCompletion(completion);
+      this.refreshCurrentPrompt();
+      this.notify(`Collected ${prompt.label.replace('Collect ', '')}`);
     } else if (prompt.kind === 'gateway') {
       this.callbacks.onOpenGatewayModal();
     }

@@ -97,14 +97,20 @@ export class VehicleSystem {
 
     if (braking) {
       v.speed = damp(v.speed, 0, 9, dt);
+      if (Math.abs(v.speed) < 0.25) v.speed = 0;
     } else if (Math.abs(throttle) > 0.05) {
       const target = throttle > 0 ? spec.maxSpeed : -spec.maxSpeed * 0.42;
       const rate = throttle > 0 ? spec.accel : spec.accel * 0.8;
-      if (throttle > 0 && v.speed < 0) v.speed = damp(v.speed, 0, 10, dt);
-      else if (throttle < 0 && v.speed > 0) v.speed = damp(v.speed, 0, 10, dt);
-      else v.speed += Math.sign(target - v.speed) * Math.min(Math.abs(target - v.speed), rate * dt);
+      if (throttle > 0 && v.speed < 0) {
+        v.speed = Math.min(0, v.speed + spec.accel * 1.8 * dt);
+      } else if (throttle < 0 && v.speed > 0) {
+        v.speed = Math.max(0, v.speed - spec.accel * 1.8 * dt);
+      } else {
+        v.speed += Math.sign(target - v.speed) * Math.min(Math.abs(target - v.speed), rate * dt);
+      }
     } else {
       v.speed = damp(v.speed, 0, 2.8, dt);
+      if (Math.abs(v.speed) < 0.08) v.speed = 0;
     }
 
     v.steerAngle = damp(v.steerAngle, steerInput * 0.48, 10, dt);

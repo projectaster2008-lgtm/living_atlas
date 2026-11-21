@@ -7,19 +7,18 @@ export class DiagnosticsTracker {
   private fps = 60;
   private lastTickAt = performance.now();
 
-  recordFrame(frameMs: number, simMs: number): void {
+  recordFrame(frameMs: number, simMs: number, nowMs = performance.now()): void {
     this.frameTimes.push(frameMs);
     this.simTimes.push(simMs);
     if (this.frameTimes.length > 60) this.frameTimes.shift();
     if (this.simTimes.length > 60) this.simTimes.shift();
 
-    const now = performance.now();
-    const dt = now - this.lastTickAt;
+    const dt = nowMs - this.lastTickAt;
     if (dt > 0) {
-      const instFps = 1000 / Math.max(1, frameMs);
+      const instFps = 1000 / Math.max(1, dt);
       this.fps = this.fps * 0.9 + instFps * 0.1;
     }
-    this.lastTickAt = now;
+    this.lastTickAt = nowMs;
   }
 
   getP95FrameMs(): number {

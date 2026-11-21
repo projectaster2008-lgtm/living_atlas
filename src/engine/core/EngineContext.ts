@@ -28,6 +28,9 @@ export class EngineContext {
   private frameHandle = 0;
   private timeoutHandle = 0;
   private disposed = false;
+  private contextLost = false;
+  private onContextLost: (e: Event) => void;
+  private onContextRestored: () => void;
 
   constructor(container: HTMLElement, initialQuality: QualityTier) {
     this.isSoftwareGl = detectSoftwareWebGL();
@@ -42,7 +45,7 @@ export class EngineContext {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.applyQuality(this.activeQuality);
 
     const width = Math.max(1, container.clientWidth || window.innerWidth);
@@ -63,6 +66,17 @@ export class EngineContext {
     this.scene.environment = this.pmremEnvTarget.texture;
     roomEnv.dispose();
     pmrem.dispose();
+
+    this.onContextLost = (e: Event) => {
+      e.preventDefault();
+      this.contextLost = true;
+    };
+    this.onContextRestored = () => {
+      this.contextLost = false;
+      this.applyQuality(this.activeQuality);
+    };
+    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
 
     this.resizeObserver = new ResizeObserver(() => {
       this.handleResize(container);
@@ -134,25 +148,25 @@ export class EngineContext {
       const rawDt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
-      onTick(rawDt);
-      this.renderer.render(this.scene, this.camera);
+      if (!this.contextLost) {
+        onTick(rawDt);
+        this.renderer.render(this.scene, this.camera);
+      }
 
-      if (this.isSoftwareGl) {
+      if (this.isSoftwareGl && !this.contextLost) {
         afterDraw(tick);
       } else {
         this.frameHandle = requestAnimationFrame(tick);
       }
     };
 
-    if (this.isSoftwareGl) {
-      this.frameHandle = requestAnimationFrame(tick);
-    } else {
-      this.frameHandle = requestAnimationFrame(tick);
-    }
+    this.frameHandle = requestAnimationFrame(tick);
   }
 
   captureScreenshotDataUrl(): string {
-    this.renderer.render(this.scene, this.camera);
+    if (!this.contextLost) {
+      this.renderer.render(this.scene, this.camera);
+    }
     return this.renderer.domElement.toDataURL('image/png');
   }
 
@@ -161,6 +175,8 @@ export class EngineContext {
     cancelAnimationFrame(this.frameHandle);
     clearTimeout(this.timeoutHandle);
     this.resizeObserver?.disconnect();
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.pmremEnvTarget?.dispose();
     if (this.renderer.domElement.parentElement) {
       this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);

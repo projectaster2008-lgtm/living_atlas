@@ -134,9 +134,16 @@ export class NpcSimulation {
         }
       }
 
-      npc.position.x = targetPos.x + this.prng.range(-2.6, 2.6);
-      npc.position.z = targetPos.z + this.prng.range(-2.6, 2.6);
+      if (regionId !== 'gateway' && Math.hypot(targetPos.x, targetPos.z) < 4.5) {
+        const ringPos = this.ringOffsetForNpc(npc.id, targetPos, 5.4);
+        npc.position.x = ringPos.x + this.prng.range(-0.6, 0.6);
+        npc.position.z = ringPos.z + this.prng.range(-0.6, 0.6);
+      } else {
+        npc.position.x = targetPos.x + this.prng.range(-2.6, 2.6);
+        npc.position.z = targetPos.z + this.prng.range(-2.6, 2.6);
+      }
       npc.position.y = 0;
+      this.enforceRegionClearance(regionId, npc.position);
       npc.path = [];
       npc.behavior = behavior;
       npc.targetLocationId = sched.targetLocationId;
@@ -183,9 +190,14 @@ export class NpcSimulation {
       updateNeeds(npc.needs, npc.behavior, simDtSec, weather);
       const decision =
         npc.decisionCooldownSec <= 0
-          ? selectUtilityAction(profile, npc, hourOfDay, weather, activeEvent, locations, this.prng)
+          ? this.sanitizeDecisionTarget(
+              activeRegionId,
+              npc.id,
+              selectUtilityAction(profile, npc, hourOfDay, weather, activeEvent, locations, this.prng),
+            )
           : null;
       stepNpcMovementAndFsm(npc, profile, simDtSec, this.pathfinder, decision, weather);
+      this.enforceRegionClearance(activeRegionId, npc.position);
     }
 
     // DISTRICT tier staggered every 0.5s
@@ -201,9 +213,14 @@ export class NpcSimulation {
         updateNeeds(npc.needs, npc.behavior, dt, weather);
         const decision =
           npc.decisionCooldownSec <= 0
-            ? selectUtilityAction(profile, npc, hourOfDay, weather, activeEvent, locations, this.prng)
+            ? this.sanitizeDecisionTarget(
+                activeRegionId,
+                npc.id,
+                selectUtilityAction(profile, npc, hourOfDay, weather, activeEvent, locations, this.prng),
+              )
             : null;
         stepNpcMovementAndFsm(npc, profile, dt, this.pathfinder, decision, weather);
+        this.enforceRegionClearance(activeRegionId, npc.position);
       }
     }
 
@@ -220,9 +237,14 @@ export class NpcSimulation {
         updateNeeds(npc.needs, npc.behavior, dt, weather);
         const decision =
           npc.decisionCooldownSec <= 0
-            ? selectUtilityAction(profile, npc, hourOfDay, weather, activeEvent, locations, this.prng)
+            ? this.sanitizeDecisionTarget(
+                activeRegionId,
+                npc.id,
+                selectUtilityAction(profile, npc, hourOfDay, weather, activeEvent, locations, this.prng),
+              )
             : null;
         stepNpcMovementAndFsm(npc, profile, dt, this.pathfinder, decision, weather);
+        this.enforceRegionClearance(activeRegionId, npc.position);
       }
     }
 
@@ -337,5 +359,50 @@ export class NpcSimulation {
     const nav = manifest.navNodes.find((n) => n.id === locId);
     if (nav) return { ...nav.position };
     return null;
+  }
+
+  private ringOffsetForNpc(npcId: string, center: Vec3, radius: number): Vec3 {
+    let hash = 0;
+    for (let i = 0; i < npcId.length; i++) {
+      hash = (hash * 31 + npcId.charCodeAt(i)) | 0;
+    }
+    const angle = ((Math.abs(hash) % 360) / 180) * Math.PI;
+    return {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y,
+      z: center.z + Math.sin(angle) * radius,
+    };
+  }
+
+  private sanitizeDecisionTarget<T extends { targetPosition: Vec3 }>(
+    regionId: RegionId,
+    npcId: string,
+    decision: T,
+  ): T {
+    if (regionId === 'gateway') return decision;
+    const r = Math.hypot(decision.targetPosition.x, decision.targetPosition.z);
+    if (r < 4.5) {
+      return {
+        ...decision,
+        targetPosition: this.ringOffsetForNpc(npcId, { x: 0, y: 0, z: 0 }, 5.4),
+      };
+    }
+    return decision;
+  }
+
+  private enforceRegionClearance(regionId: RegionId, pos: Vec3): void {
+    if (regionId === 'gateway') return;
+    const minRadius = 4.35;
+    const r = Math.hypot(pos.x, pos.z);
+    if (r < minRadius) {
+      if (r < 0.001) {
+        pos.x = minRadius;
+        pos.z = 0;
+      } else {
+        const scale = minRadius / r;
+        pos.x *= scale;
+        pos.z *= scale;
+      }
+    }
   }
 }

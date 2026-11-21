@@ -48,19 +48,27 @@ export function resolveInteractionPrompt(
 
     // Interior NPCs (stationed inside building)
     const interiorNpcs = npcs.filter((n) => n.targetLocationId === activeInterior.entryBuildingId);
-    if (interiorNpcs.length > 0) {
-      const profile = getProfile(interiorNpcs[0].id);
-      if (profile && dist2D(player.position.x, player.position.z, 0, -2.5) <= 4.5) {
-        return {
+    let bestPrompt: ActiveInteractionPrompt | null = null;
+    let bestDist = 4.5;
+    for (let idx = 0; idx < interiorNpcs.length; idx++) {
+      const npc = interiorNpcs[idx];
+      const profile = getProfile(npc.id);
+      if (!profile) continue;
+      const offsetX = (idx - (interiorNpcs.length - 1) * 0.5) * 2.2;
+      const d = dist2D(player.position.x, player.position.z, offsetX, -2.6);
+      if (d <= bestDist) {
+        bestDist = d;
+        bestPrompt = {
           id: `npc-${profile.id}`,
           kind: 'npc',
           label: `Talk to ${profile.name}`,
           sublabel: profile.occupation,
           targetId: profile.id,
-          distance: 2.5,
+          distance: d,
         };
       }
     }
+    if (bestPrompt) return bestPrompt;
     return null;
   }
 

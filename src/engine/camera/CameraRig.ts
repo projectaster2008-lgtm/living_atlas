@@ -9,6 +9,12 @@ const _desiredLook = new THREE.Vector3();
 const _camForward = new THREE.Vector3();
 const _camRight = new THREE.Vector3();
 
+export interface InteriorCameraBounds {
+  halfW: number;
+  height: number;
+  halfD: number;
+}
+
 export class CameraRig {
   public yaw = 0;
   public pitch = 0.32;
@@ -19,16 +25,30 @@ export class CameraRig {
   private currentLook = new THREE.Vector3(0, 1.4, 24);
   private titleTime = 0;
 
-  snapToTarget(target: Vec3, yaw: number): void {
+  snapToTarget(target: Vec3, yaw: number, interiorBounds: InteriorCameraBounds | null = null): void {
     this.yaw = yaw + Math.PI;
     const sinY = Math.sin(this.yaw);
     const cosY = Math.cos(this.yaw);
+    const dist = interiorBounds ? 3.4 : this.distance;
+    const horiz = interiorBounds ? Math.cos(this.pitch) * dist : dist;
+    const vert = interiorBounds ? Math.sin(this.pitch) * dist + 1.55 : 3.2;
+
     this.currentPos.set(
-      target.x + sinY * this.distance,
-      target.y + 3.2,
-      target.z + cosY * this.distance,
+      target.x + sinY * horiz,
+      target.y + vert,
+      target.z + cosY * horiz,
     );
+    if (interiorBounds) {
+      this.clampToInterior(this.currentPos, interiorBounds);
+    }
     this.currentLook.set(target.x, target.y + 1.4, target.z);
+  }
+
+  private clampToInterior(pos: THREE.Vector3, bounds: InteriorCameraBounds): void {
+    const margin = 0.65;
+    pos.x = clamp(pos.x, -(bounds.halfW - margin), bounds.halfW - margin);
+    pos.z = clamp(pos.z, -(bounds.halfD - margin), bounds.halfD - margin);
+    pos.y = clamp(pos.y, 0.9, Math.max(1.2, bounds.height - 0.55));
   }
 
   updateTitleFlyover(camera: THREE.PerspectiveCamera, dt: number): void {
@@ -50,6 +70,7 @@ export class CameraRig {
     input: InputHub,
     sensitivity: number,
     colliders: ColliderBox[],
+    interiorBounds: InteriorCameraBounds | null = null,
   ): void {
     const look = input.consumeLookDelta();
     if (look.dx !== 0 || look.dy !== 0) {
@@ -57,7 +78,7 @@ export class CameraRig {
       this.pitch = clamp(this.pitch + look.dy * 0.0032 * sensitivity, -0.15, 1.15);
     }
 
-    // Keyboard Q/E fallback orbit for accessibility
+    // Keyboard Q/C fallback orbit for accessibility
     if (this.mode !== 'observer') {
       if (input.isHeld('KeyQ')) this.yaw += 1.8 * dt;
       if (input.isHeld('KeyC')) this.yaw -= 1.8 * dt;
@@ -80,8 +101,8 @@ export class CameraRig {
       _desiredPos.copy(this.observerPos);
       _desiredLook
         .copy(this.observerPos)
-        .addScaledVector(_camForward, 12)
-        .add(new THREE.Vector3(0, -Math.sin(this.pitch) * 10, 0));
+        .addScaledVector(_camForward, 12);
+      _desiredLook.y += -Math.sin(this.pitch) * 10;
 
       this.currentPos.x = damp(this.currentPos.x, _desiredPos.x, 12, dt);
       this.currentPos.y = damp(this.currentPos.y, _desiredPos.y, 12, dt);
@@ -94,8 +115,8 @@ export class CameraRig {
       return;
     }
 
-    let targetDist = isInterior ? 4.4 : isDriving ? Math.max(7.6, this.distance + 1.8) : this.distance;
-    if (this.mode === 'shoulder') targetDist = 3.2;
+    let targetDist = isInterior ? 3.4 : isDriving ? Math.max(7.6, this.distance + 1.8) : this.distance;
+    if (this.mode === 'shoulder') targetDist = isInterior ? 2.6 : 3.2;
 
     if (isDriving) {
       // Gently align behind vehicle when moving
@@ -105,7 +126,7 @@ export class CameraRig {
     }
 
     const horiz = Math.cos(this.pitch) * targetDist;
-    const vert = Math.sin(this.pitch) * targetDist + (isDriving ? 2.1 : 1.75);
+    const vert = Math.sin(this.pitch) * targetDist + (isDriving ? 2.1 : isInterior ? 1.55 : 1.75);
 
     _desiredLook.set(playerPos.x, playerPos.y + (isDriving ? 1.3 : 1.45), playerPos.z);
     _desiredPos.set(
@@ -114,8 +135,10 @@ export class CameraRig {
       playerPos.z + Math.cos(this.yaw) * horiz,
     );
 
-    // Simple wall pull-in check against building colliders
-    if (!isInterior) {
+    // Wall pull-in check against building colliders or interior room walls
+    if (isInterior && interiorBounds) {
+      this.clampToInterior(_desiredPos, interiorBounds);
+    } else if (!isInterior) {
       for (const box of colliders) {
         if (
           _desiredPos.x > box.minX - 0.5 &&
@@ -134,6 +157,9 @@ export class CameraRig {
     this.currentPos.x = damp(this.currentPos.x, _desiredPos.x, 12, dt);
     this.currentPos.y = damp(this.currentPos.y, _desiredPos.y, 12, dt);
     this.currentPos.z = damp(this.currentPos.z, _desiredPos.z, 12, dt);
+    if (isInterior && interiorBounds) {
+      this.clampToInterior(this.currentPos, interiorBounds);
+    }
     this.currentLook.x = damp(this.currentLook.x, _desiredLook.x, 15, dt);
     this.currentLook.y = damp(this.currentLook.y, _desiredLook.y, 15, dt);
     this.currentLook.z = damp(this.currentLook.z, _desiredLook.z, 15, dt);

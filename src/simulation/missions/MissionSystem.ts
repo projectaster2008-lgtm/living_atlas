@@ -38,7 +38,24 @@ export class MissionSystem {
     this.ensureDefaultActiveMission();
   }
 
+  reset(): void {
+    for (const id of this.orderedIds) {
+      const m = this.defs.get(id);
+      if (!m) continue;
+      this.progress.set(id, {
+        missionId: m.id,
+        status: m.prerequisiteMissionId ? 'locked' : 'available',
+        currentObjectiveIndex: 0,
+        completedObjectiveIds: [],
+        completedCount: 0,
+      });
+    }
+    this.activeMissionId = null;
+    this.ensureDefaultActiveMission();
+  }
+
   loadProgress(saved: Record<string, MissionProgress>): void {
+    this.reset();
     for (const [id, p] of Object.entries(saved)) {
       if (this.defs.has(id)) {
         this.progress.set(id, {

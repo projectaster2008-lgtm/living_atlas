@@ -8,9 +8,14 @@ export interface LoadedGltfAsset {
   animations: THREE.AnimationClip[];
 }
 
+interface CachedGltfEntry {
+  asset: LoadedGltfAsset;
+  scope: string;
+}
+
 export class AssetLoader {
   private gltfLoader = new GLTFLoader();
-  private cache = new Map<string, LoadedGltfAsset>();
+  private cache = new Map<string, CachedGltfEntry>();
   private registry: ResourceRegistry;
 
   constructor(registry: ResourceRegistry) {
@@ -20,9 +25,9 @@ export class AssetLoader {
   async loadGltf(url: string, scope: string): Promise<LoadedGltfAsset> {
     const existing = this.cache.get(url);
     if (existing) {
-      const cloned = SkeletonUtils.clone(existing.scene) as THREE.Group;
+      const cloned = SkeletonUtils.clone(existing.asset.scene) as THREE.Group;
       this.registry.trackObject3D(cloned, scope);
-      return { scene: cloned, animations: existing.animations };
+      return { scene: cloned, animations: existing.asset.animations };
     }
 
     const gltf = await this.gltfLoader.loadAsync(url);
@@ -34,16 +39,18 @@ export class AssetLoader {
       }
     });
     this.registry.trackObject3D(gltf.scene, scope);
-    this.cache.set(url, { scene: gltf.scene, animations: gltf.animations });
+    this.cache.set(url, { asset: { scene: gltf.scene, animations: gltf.animations }, scope });
     const cloned = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+    this.registry.trackObject3D(cloned, scope);
     return { scene: cloned, animations: gltf.animations };
   }
 
   clearScope(scope: string): void {
     this.registry.disposeScope(scope);
-    if (scope !== 'global') {
-      // Cached base templates are cleared if their scope was disposed
-      this.cache.clear();
+    for (const [url, entry] of this.cache.entries()) {
+      if (entry.scope === scope) {
+        this.cache.delete(url);
+      }
     }
   }
 }

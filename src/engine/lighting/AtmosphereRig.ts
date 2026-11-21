@@ -9,6 +9,7 @@ const _sunDir = new THREE.Vector3();
 const _dayFog = new THREE.Color();
 const _nightFog = new THREE.Color();
 const _curFog = new THREE.Color();
+const _overcastFog = new THREE.Color(0x8e9aa6);
 const _rainMat = new THREE.Matrix4();
 const _rainPos = new THREE.Vector3();
 const _rainQuat = new THREE.Quaternion();
@@ -137,7 +138,7 @@ export class AtmosphereRig {
       _nightFog.set(manifest.palette.fogNight);
       _curFog.copy(_nightFog).lerp(_dayFog, sun.daylightFactor);
       if (weather.cloudCover > 0.3) {
-        _curFog.lerp(new THREE.Color(0x8e9aa6), weather.cloudCover * 0.45 * sun.daylightFactor);
+        _curFog.lerp(_overcastFog, weather.cloudCover * 0.45 * sun.daylightFactor);
       }
       this.fog.color.copy(_curFog);
       const baseFog = quality === 'low' ? 0.0044 : 0.0027;
